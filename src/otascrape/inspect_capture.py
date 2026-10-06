@@ -38,6 +38,45 @@ def _short(v: Any) -> str:
     return str(v).replace("\n", " ")[:40]
 
 
+def _chain(el, depth: int = 6) -> str:
+    parts = []
+    for parent in [el, *el.parents][:depth]:
+        if getattr(parent, "name", None) in (None, "[document]", "html", "body"):
+            break
+        mark = parent.get("data-testid") or parent.get("id") or ""
+        cls = (parent.get("class") or [""])[0][:18]
+        parts.append(f"{parent.name}[{mark}]" if mark else f"{parent.name}.{cls}" if cls else parent.name)
+    return " < ".join(parts)
+
+
+def _dom_diagnostics(soup: BeautifulSoup) -> list[str]:
+    out: list[str] = ["", "## Sayfa yapısı"]
+    h1 = soup.find("h1")
+    out.append(f"title: {soup.title.get_text(strip=True)[:100] if soup.title else None} | h1: {h1.get_text(' ', strip=True)[:100] if h1 else None}")
+    date_lines = [t for t in soup.get_text("\n", strip=True).split("\n")
+                  if re.search(r"\b(Oct|Nov|Dec|Eki|Kas|Ara)\b.*\d|\d+\s*(nights?|gece)", t, re.I) and len(t) < 80]
+    out.append("Tarih/gece satırları: " + " || ".join(list(dict.fromkeys(date_lines))[:8]))
+    counts: dict[str, int] = {}
+    for el in soup.find_all(attrs={"data-testid": True}):
+        counts[el["data-testid"]] = counts.get(el["data-testid"], 0) + 1
+    top = sorted(counts.items(), key=lambda kv: -kv[1])[:45]
+    out.append("data-testid (adet): " + ", ".join(f"{k}x{v}" for k, v in top))
+    out.append("Fiyat satırlarının DOM bağlamı (ilk 6):")
+    seen = 0
+    for node in soup.find_all(string=_MONEY_TEXT):
+        el = node.parent
+        box = el
+        for _ in range(3):
+            if box.parent is not None and box.parent.name not in ("body", "html", "[document]"):
+                box = box.parent
+        out.append(f"  '{str(node).strip()[:30]}'  {_chain(el)}")
+        out.append(f"      çevre metin: {box.get_text(' | ', strip=True)[:170]}")
+        seen += 1
+        if seen >= 6:
+            break
+    return out
+
+
 def summarize(stem: Path, max_lines: int = 160) -> list[str]:
     json_path, html_path = stem.with_suffix(".json"), stem.with_suffix(".html")
     lines: list[str] = []
@@ -46,14 +85,20 @@ def summarize(stem: Path, max_lines: int = 160) -> list[str]:
         raw = json.loads(json_path.read_text(encoding="utf-8"))
         records = [r if isinstance(r, dict) and "body" in r else {"source": {}, "body": r} for r in raw]
         lines.append(f"## JSON blokları: {len(records)} adet")
+        small_inline = 0
         for i, rec in enumerate(records):
             src = rec["source"]
+            if src.get("url") == "inline-script" and len(json.dumps(rec["body"], ensure_ascii=False)) < 1024:
+                small_inline += 1  # kalabalığı azaltmak için tek satırda özetlenir
+                continue
             op = ""
             m = re.search(r'"operationName"\s*:\s*"([^"]+)"', src.get("post", ""))
             if m:
                 op = f" op={m.group(1)}"
             size = len(json.dumps(rec["body"], ensure_ascii=False))
             lines.append(f"[{i}] {src.get('method','')} {src.get('url','?')[:110]}{op} ({size // 1024} KB)")
+        if small_inline:
+            lines.append(f"(+ {small_inline} küçük inline-script JSON bloğu, <1 KB)")
         lines.append("")
         lines.append("## Fiyat/acenta ile ilgili JSON yolları (blok no, yol, adet, örnekler)")
         found = []
@@ -87,6 +132,7 @@ def summarize(stem: Path, max_lines: int = 160) -> list[str]:
         lines.extend(scripts[:8])
         for tag in soup(["script", "style"]):
             tag.decompose()
+        lines.extend(_dom_diagnostics(soup))
         text_lines = [t for t in soup.get_text("\n", strip=True).split("\n") if _MONEY_TEXT.search(t)]
         lines.append(f"Görünür metinde para tutarı geçen satırlar: {len(text_lines)} adet (ilk 25):")
         lines.extend(f"  {t[:110]}" for t in list(dict.fromkeys(text_lines))[:25])

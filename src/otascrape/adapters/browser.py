@@ -20,7 +20,7 @@ from .jsonscan import scripts_json
 _BLOCK_RE = re.compile(
     r"captcha|awswaf|aws-waf|challenge-container|access denied|datadome|px-captcha|"
     r"are you a robot|unusual traffic|pardon our interruption|robot olmadığını", re.I)
-_MAX_RESPONSES = 80
+_MAX_RESPONSES = 150  # yalnızca JSON yanıtlar sayılır
 
 
 @dataclass
@@ -30,6 +30,7 @@ class PageCapture:
     html: str
     blobs: list[Any] = field(default_factory=list)
     sources: list[dict[str, str]] = field(default_factory=list)  # blobs ile aynı sırada
+    final_url: str = ""  # yönlendirme/kullanıcı etkileşiminden sonraki adres
 
 
 def render_template(url: str, search: Search) -> str:
@@ -52,6 +53,9 @@ def render_template(url: str, search: Search) -> str:
 class BrowserAdapter(Adapter):
     experimental = False
     wait_selector: str | None = None
+    scroll = False        # tembel yüklenen içerik için sayfayı birkaç kez aşağı kaydır
+    settle_ms = 0         # yüklemeden sonra ek bekleme (gecikmeli XHR'ler için)
+    manual_pause = False  # probe --manual: kullanıcı sayfada elle işlem yapıp Enter'a basana kadar bekle
 
     def __init__(self, settings: ScraperSettings) -> None:
         self._s = settings
@@ -91,7 +95,16 @@ class BrowserAdapter(Adapter):
         self._ensure_browser()
         page = self._context.new_page()
         responses: list[Any] = []
-        page.on("response", lambda r: responses.append(r) if len(responses) < _MAX_RESPONSES else None)
+
+        def on_response(r: Any) -> None:
+            # Sayaç yalnızca JSON yanıtlara uygulanır; görsel/script yanıtları limiti tüketmesin
+            try:
+                if len(responses) < _MAX_RESPONSES and r.status == 200 and "json" in r.headers.get("content-type", ""):
+                    responses.append(r)
+            except Exception:
+                pass
+
+        page.on("response", on_response)
         try:
             resp = page.goto(url, wait_until="domcontentloaded", timeout=self._s.timeout_seconds * 1000)
             status = resp.status if resp else None
@@ -105,22 +118,30 @@ class BrowserAdapter(Adapter):
                     page.wait_for_load_state("networkidle", timeout=15_000)
                 except Exception:
                     pass
+            if self.scroll:
+                for _ in range(4):
+                    page.mouse.wheel(0, 1200)
+                    page.wait_for_timeout(1200)
+            if self.settle_ms:
+                page.wait_for_timeout(self.settle_ms)
+            if self.manual_pause:
+                input("\n>>> Açılan pencerede tarihleri seçin, fiyat listesi yüklenince BURAYA dönüp Enter'a basın: ")
+                page.wait_for_timeout(1500)
             blobs: list[Any] = []
             sources: list[dict[str, str]] = []
             for r in responses:
                 try:
-                    if r.status == 200 and "json" in r.headers.get("content-type", ""):
-                        body = r.json()
-                        blobs.append(body)
-                        sources.append({"url": r.url[:300], "method": r.request.method,
-                                        "post": (r.request.post_data or "")[:300]})
+                    body = r.json()
+                    blobs.append(body)
+                    sources.append({"url": r.url[:300], "method": r.request.method,
+                                    "post": (r.request.post_data or "")[:300]})
                 except Exception:  # gövde artık okunamıyor olabilir
                     continue
             html = page.content()
             inline = scripts_json(html)
             blobs.extend(inline)
             sources.extend({"url": "inline-script", "method": "", "post": ""} for _ in inline)
-            return PageCapture(url=url, status=status, html=html, blobs=blobs, sources=sources)
+            return PageCapture(url=url, status=status, html=html, blobs=blobs, sources=sources, final_url=page.url)
         finally:
             page.close()
 
@@ -162,6 +183,8 @@ class BrowserAdapter(Adapter):
         (out_dir / f"{stem}.json").write_text(json.dumps(records, ensure_ascii=False, default=str), encoding="utf-8")
         summary: dict[str, Any] = {"url": url, "status": capture.status, "html_bytes": len(capture.html),
                                    "json_blobs": len(capture.blobs), "files": str(out_dir / stem) + ".{html,json}"}
+        if capture.final_url and capture.final_url != url:
+            summary["final_url"] = capture.final_url
         try:
             self.check_blocked(capture)
             summary["offers"] = len(self.parse(capture, search))

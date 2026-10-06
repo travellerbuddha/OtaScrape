@@ -209,3 +209,28 @@ def test_probe_with_url_and_headed(tmp_path, monkeypatch, capsys):
     assert main(args) == 0
     assert seen["headless"] is False and "search=100-77;dr-" in seen["url"]
     assert "offers: 3" in capsys.readouterr().out
+
+
+def test_trivago_keeps_url_fragment():
+    url = adapter(TrivagoAdapter).build_url(make_search(url="https://www.trivago.com.tr/en-US/lm/x?search=100-151839;dr-20261019-20261025;drs-40#::hasInteracted=true"))
+    assert url == "https://www.trivago.com.tr/en-US/lm/x?search=100-151839;dr-20261101-20261108;rc-1-2#::hasInteracted=true"
+
+
+def test_probe_manual_reports_final_url(tmp_path, monkeypatch, capsys):
+    seen = {}
+
+    def fake_fetch_page(self, url):
+        seen["manual"], seen["headless"] = self.manual_pause, self._s.headless
+        return PageCapture(url, 200, "<html>" + "x" * 100 + "</html>", [TRIVAGO_LIKE], final_url=url + "&elle=secildi")
+
+    monkeypatch.setattr(TrivagoAdapter, "fetch_page", fake_fetch_page)
+    p = tmp_path / "c.yaml"
+    p.write_text(yaml.safe_dump({
+        "database": str(tmp_path / "t.db"), "scraper": {"debug_dir": str(tmp_path / "dbg")},
+        "stays": [{"name": "7N-2AD", "nights": 7, "adults": 2}], "checkin": {"offsets_days": [10]},
+        "hotels": [{"id": "a", "channels": {"trivago": {"url": "https://t/x?search=100-1", "price_basis": "per_night"}}}],
+    }))
+    assert main(["-c", str(p), "probe", "--hotel", "a", "--channel", "trivago", "--manual"]) == 0
+    assert seen == {"manual": True, "headless": False}
+    out = capsys.readouterr().out
+    assert "final_url: " in out and "&elle=secildi" in out

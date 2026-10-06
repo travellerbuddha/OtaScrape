@@ -51,7 +51,7 @@ def _probe(cfg, args) -> int:
         return 2
     if "ORNEK" in searches[0].url.upper():
         print("UYARI: URL hâlâ örnek değer gibi görünüyor; gerçek otel sayfası URL'sini kullanın.", file=sys.stderr)
-    if args.headed:
+    if args.headed or args.manual:
         cfg.scraper.headless = False
     registry = AdapterRegistry(cfg.scraper)
     try:
@@ -59,6 +59,7 @@ def _probe(cfg, args) -> int:
         if not hasattr(adapter, "probe"):
             print(f"'{args.channel}' adaptörü probe desteklemiyor.", file=sys.stderr)
             return 2
+        adapter.manual_pause = bool(args.manual)
         summary = adapter.probe(searches[0], Path(cfg.scraper.debug_dir))
     finally:
         registry.close()
@@ -84,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     probe.add_argument("--check-in", help="YYYY-MM-DD (varsayılan: ilk giriş tarihi)")
     probe.add_argument("--url", help="config yerine bu kanal URL'sini kullan (otel/kanal config'te olmasa da çalışır)")
     probe.add_argument("--price-basis", choices=["total", "per_night"], help="sayfadaki fiyat toplam mı gecelik mi")
+    probe.add_argument("--manual", action="store_true",
+                       help="sayfayı açıp bekler; tarihleri elle seçip Enter'a basınca yakalar ve son adresi yazar (--headed'ı kapsar)")
     probe.add_argument("--headed", action="store_true", help="tarayıcı penceresini göster (bot engelini azaltabilir)")
     insp = sub.add_parser("inspect", help="probe yakalamasını kısa bir özete çevir (yapıştırıp paylaşmak için)")
     insp.add_argument("file", help="probe dosyası (.json/.html) veya uzantısız dosya adı")

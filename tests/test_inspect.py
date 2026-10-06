@@ -24,3 +24,17 @@ def test_inspect_old_json_format(tmp_path, capsys):
     stem.with_suffix(".json").write_text(json.dumps([{"deal": {"price": 5}}]))
     assert main(["inspect", str(stem)]) == 0
     assert "deal.price" in capsys.readouterr().out
+
+
+def test_inspect_dom_diagnostics(tmp_path, capsys):
+    stem = tmp_path / "d"
+    stem.with_suffix(".json").write_text("[]")
+    stem.with_suffix(".html").write_text(
+        '<html><title>Hotel X</title><h1>Hotel X</h1><body><div data-testid="deal-list"><section data-testid="deal-row">'
+        '<span data-testid="advertiser-name">Booking.com</span><span>₺15,549</span><span>₺93,293 total</span></section></div>'
+        '<p>21 Oct - 28 Oct</p></body></html>')
+    assert main(["inspect", str(stem)]) == 0
+    out = capsys.readouterr().out
+    assert "h1: Hotel X" in out and "21 Oct - 28 Oct" in out
+    assert "deal-rowx1" in out and "advertiser-namex1" in out
+    assert "span < section[deal-row] < div[deal-list]" in out and "Booking.com | ₺15,549 | ₺93,293 total" in out

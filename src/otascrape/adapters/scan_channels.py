@@ -25,6 +25,8 @@ _NO_AVAILABILITY = re.compile(r"no availability|not available|sold out|müsait d
 class ScanAdapter(BrowserAdapter):
     experimental = True
     mode = "advertiser"           # 'advertiser' (metasearch) | 'room' (tek satıcılı OTA)
+    scroll = True
+    settle_ms = 2500
     fixed_seller: str | None = None
 
     # -- URL ----------------------------------------------------------------------
@@ -92,7 +94,7 @@ class TrivagoAdapter(ScanAdapter):
             raise FatalScrapeError("trivago: URL'de 'search=<tip>-<id>' bulunamadı; Trivago'da otel sayfasını açıp tam URL'yi kopyalayın")
         s = search
         value = f"{token};dr-{s.check_in:%Y%m%d}-{s.check_out:%Y%m%d};rc-1-{s.stay.adults}"
-        return urlunsplit((parts.scheme, parts.netloc, parts.path, f"search={value}", ""))
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, f"search={value}", parts.fragment))  # fragment (#::hasInteracted=true gibi) korunur
 
 
 class TripComAdapter(ScanAdapter):
