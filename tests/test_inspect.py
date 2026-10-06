@@ -55,3 +55,24 @@ def test_inspect_block_skeleton(tmp_path, capsys):
     assert "accommodationDealsQuery" in out and '"dateRange":"2026-10-12/2026-10-18"' in out
     assert '"name": "Agoda"' in out and '"name": "Hotel Site"' in out
     assert "…(+1 öğe daha)" in out and "böyle bir blok yok" in out
+
+
+def test_inspect_deal_rows_and_requests(tmp_path, capsys):
+    stem = tmp_path / "r"
+    row = ('<div data-testid="slideout-deal"><div data-testid="deal-row"><span data-testid="advertiser-name">Agoda</span>'
+           '<div data-testid="recommended-price"><span>₺13,711</span></div><p data-testid="price-per-stay">₺82,268 total</p>'
+           '<span data-testid="rate-attribute">Free cancellation</span><p>Delüks Oda</p></div></div>')
+    stem.with_suffix(".html").write_text(f"<html><body>{row}<div data-testid='list'>"
+                                         f"<div><span data-testid='advertiser-name'>A</span></div>"
+                                         f"<div><span data-testid='advertiser-name'>B</span></div></div></body></html>")
+    stem.with_suffix(".json").write_text(json.dumps([
+        {"source": {"url": "https://t/graphql?accommodationDealsQuery", "method": "POST", "post": '{"variables":{"currency":"TRY"}}'}, "body": {}},
+        {"source": {"url": "https://t/graphql?LogUserAction", "method": "POST", "post": "x"}, "body": {}}]))
+    assert main(["inspect", str(stem), "--deal-rows"]) == 0
+    out = capsys.readouterr().out
+    assert "slideout içinde: True" in out
+    assert "advertiser-name: Agoda" in out and "price-per-stay: ₺82,268 total" in out and "rate-attribute: Free cancellation" in out
+    assert "p: Delüks Oda" in out
+    assert main(["inspect", str(stem), "--requests"]) == 0
+    out = capsys.readouterr().out
+    assert '[0] accommodationDealsQuery: {"variables":{"currency":"TRY"}}' in out and "LogUserAction" not in out

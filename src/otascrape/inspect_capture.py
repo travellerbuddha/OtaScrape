@@ -107,10 +107,70 @@ def block_skeleton(records: list[dict], index: int, limit: int = 7000) -> list[s
     return lines
 
 
-def summarize(stem: Path, max_lines: int = 160, blocks: list[int] | None = None) -> list[str]:
+def deal_rows(soup: BeautifulSoup, limit: int = 6) -> list[str]:
+    """`advertiser-name` öğelerinin bulunduğu satırın iç yapısını (testid: metin) listeler."""
+    out = ["## Acenta satırları (DOM): her satırdaki metin öğeleri"]
+    shown: set[str] = set()
+    for el in soup.find_all(attrs={"data-testid": "advertiser-name"}):
+        row = el
+        best = None
+        for parent in el.parents:
+            if parent.name in ("body", "html", "[document]"):
+                break
+            if len(parent.find_all(attrs={"data-testid": "advertiser-name"})) != 1:
+                break
+            best = parent
+        if best is None:
+            continue
+        items = []
+        for node in best.find_all(True):
+            own = "".join(t for t in node.find_all(string=True, recursive=False)).strip()
+            mark = node.get("data-testid")
+            if own and len(own) < 90:
+                items.append(f"{mark or node.name}: {own}")
+            elif mark and not own:
+                items.append(f"[{mark}]")
+        signature = " | ".join(items)
+        if signature in shown:
+            continue
+        shown.add(signature)
+        slide = any("slideout" in (a.get("data-testid") or "") for a in [best, *best.parents])
+        out.append(f"- satır (slideout içinde: {slide}; kök: {_chain(best, 3)}):")
+        out.extend(f"    {it}" for it in items[:40])
+        if len(shown) >= limit:
+            break
+    if len(out) == 1:
+        out.append("(advertiser-name öğesi bulunamadı)")
+    return out
+
+
+def request_bodies(records: list[dict], ops=("accommodationSearchQuery", "accommodationDealsQuery", "getAdvertiserDetails"),
+                   per_op: int = 2) -> list[str]:
+    out = ["## İstek gövdeleri (her işlemden ilk %d)" % per_op]
+    counts: dict[str, int] = {}
+    for i, rec in enumerate(records):
+        src = rec["source"]
+        for op in ops:
+            if op in src.get("url", "") and counts.get(op, 0) < per_op:
+                counts[op] = counts.get(op, 0) + 1
+                out.append(f"[{i}] {op}: {src.get('post', '')[:1200]}")
+    return out
+
+
+def summarize(stem: Path, max_lines: int = 160, blocks: list[int] | None = None,
+              rows: bool = False, requests: bool = False) -> list[str]:
     json_path, html_path = stem.with_suffix(".json"), stem.with_suffix(".html")
     lines: list[str] = []
 
+    if rows:
+        soup = BeautifulSoup(html_path.read_text(encoding="utf-8"), "html.parser")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+        return deal_rows(soup)
+    if requests:
+        raw = json.loads(json_path.read_text(encoding="utf-8"))
+        records = [r if isinstance(r, dict) and "body" in r else {"source": {}, "body": r} for r in raw]
+        return request_bodies(records)
     if blocks:
         raw = json.loads(json_path.read_text(encoding="utf-8"))
         records = [r if isinstance(r, dict) and "body" in r else {"source": {}, "body": r} for r in raw]

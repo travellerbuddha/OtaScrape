@@ -91,12 +91,14 @@ def main(argv: list[str] | None = None) -> int:
     insp = sub.add_parser("inspect", help="probe yakalamasını kısa bir özete çevir (yapıştırıp paylaşmak için)")
     insp.add_argument("file", help="probe dosyası (.json/.html) veya uzantısız dosya adı")
     insp.add_argument("--block", type=int, action="append", help="yalnızca bu JSON bloğunun yapısını göster (birden çok kez verilebilir)")
+    insp.add_argument("--deal-rows", action="store_true", help="sayfadaki acenta satırlarının DOM yapısını göster")
+    insp.add_argument("--requests", action="store_true", help="arama/fırsat/acenta isteklerinin gövdelerini göster")
     args = parser.parse_args(argv)
 
     if args.cmd == "inspect":
         from .inspect_capture import summarize
 
-        print("\n".join(summarize(Path(args.file).with_suffix(""), blocks=args.block)))
+        print("\n".join(summarize(Path(args.file).with_suffix(""), blocks=args.block, rows=args.deal_rows, requests=args.requests)))
         return 0
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
