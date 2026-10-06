@@ -32,15 +32,27 @@ def _probe(cfg, args) -> int:
 
     from .adapters import AdapterRegistry
     from .config import build_searches
+    from .models import Search
 
     searches = [x for x in build_searches(cfg, date.today()) if x.hotel_id == args.hotel and x.channel == args.channel]
     if args.stay:
         searches = [x for x in searches if x.stay.name == args.stay]
     if args.check_in:
         searches = [x for x in searches if x.check_in.isoformat() == args.check_in]
+    if args.url:
+        template = searches[0] if searches else build_searches(cfg, date.today())[0]
+        options = dict(template.options) if searches else {}
+        if args.price_basis:
+            options["price_basis"] = args.price_basis
+        searches = [Search(args.hotel, args.hotel, args.channel, args.url, template.check_in, template.stay,
+                           cfg.search_currency, options)]
     if not searches:
-        print("Eşleşen otel/kanal/konaklama/tarih bulunamadı (config'i kontrol edin).", file=sys.stderr)
+        print("Eşleşen otel/kanal/konaklama/tarih bulunamadı (config'i kontrol edin veya --url verin).", file=sys.stderr)
         return 2
+    if "ORNEK" in searches[0].url.upper():
+        print("UYARI: URL hâlâ örnek değer gibi görünüyor; gerçek otel sayfası URL'sini kullanın.", file=sys.stderr)
+    if args.headed:
+        cfg.scraper.headless = False
     registry = AdapterRegistry(cfg.scraper)
     try:
         adapter = registry.get(args.channel)
@@ -70,6 +82,9 @@ def main(argv: list[str] | None = None) -> int:
     probe.add_argument("--channel", required=True)
     probe.add_argument("--stay", help="konaklama adı (varsayılan: ilk)")
     probe.add_argument("--check-in", help="YYYY-MM-DD (varsayılan: ilk giriş tarihi)")
+    probe.add_argument("--url", help="config yerine bu kanal URL'sini kullan (otel/kanal config'te olmasa da çalışır)")
+    probe.add_argument("--price-basis", choices=["total", "per_night"], help="sayfadaki fiyat toplam mı gecelik mi")
+    probe.add_argument("--headed", action="store_true", help="tarayıcı penceresini göster (bot engelini azaltabilir)")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

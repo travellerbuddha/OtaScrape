@@ -188,3 +188,24 @@ def test_probe_command(tmp_path, monkeypatch, capsys):
     files = sorted(x.suffix for x in (tmp_path / "dbg").glob("probe_trivago_*"))
     assert files == [".html", ".json"]
     assert main(["-c", str(p), "probe", "--hotel", "zzz", "--channel", "trivago"]) == 2
+
+
+def test_probe_with_url_and_headed(tmp_path, monkeypatch, capsys):
+    seen = {}
+
+    def fake_fetch_page(self, url):
+        seen["headless"], seen["url"] = self._s.headless, url
+        return PageCapture(url, 200, "<html>" + "x" * 100 + "</html>", [TRIVAGO_LIKE])
+
+    monkeypatch.setattr(TrivagoAdapter, "fetch_page", fake_fetch_page)
+    p = tmp_path / "c.yaml"
+    p.write_text(yaml.safe_dump({
+        "database": str(tmp_path / "t.db"), "scraper": {"debug_dir": str(tmp_path / "dbg"), "headless": True},
+        "stays": [{"name": "7N-2AD", "nights": 7, "adults": 2}], "checkin": {"offsets_days": [10]},
+        "hotels": [{"id": "other", "channels": {"booking": "https://b/x"}}],   # trivago config'te yok
+    }))
+    args = ["-c", str(p), "probe", "--hotel", "mardan-palace", "--channel", "trivago", "--headed",
+            "--url", "https://www.trivago.com/en-US/oar/x?search=100-77", "--price-basis", "per_night"]
+    assert main(args) == 0
+    assert seen["headless"] is False and "search=100-77;dr-" in seen["url"]
+    assert "offers: 3" in capsys.readouterr().out
