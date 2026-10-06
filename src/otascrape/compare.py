@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import date
 
@@ -41,6 +42,8 @@ class Comparison:
     reference_seller: str
     reference_total: float
     rows: list[Row]
+    room_type: str = ""        # boşsa oda tipi eşlemesi yok (satıcıların en ucuz odası kıyaslanır)
+    cancel_policy: str = "any"  # free | nofree | unknown | any (iptal koşuluna göre gruplanmadı)
 
     @property
     def spread_pct(self) -> float:
@@ -80,17 +83,47 @@ def _converted(offers: list[Offer], cfg: Config) -> list[tuple[Offer, float]]:
     return out
 
 
+def _room_matchers(cfg: Config) -> dict[str, list[tuple[str, list[re.Pattern[str]]]]]:
+    return {h.id: [(canonical, [re.compile(p, re.I) for p in patterns]) for canonical, patterns in h.room_types.items()]
+            for h in cfg.hotels if h.room_types}
+
+
+def _room_type(matchers: list[tuple[str, list[re.Pattern[str]]]], room_name: str) -> str | None:
+    for canonical, patterns in matchers:
+        if any(p.search(room_name) for p in patterns):
+            return canonical
+    return None
+
+
+def _cancel_policy(free: bool | None) -> str:
+    return {True: "free", False: "nofree"}.get(free, "unknown")
+
+
 def build_comparisons(offers: list[Offer], cfg: Config) -> list[Comparison]:
+    """Karşılaştırma grubu: otel + giriş + konaklama + pansiyon (+ oda tipi, otelde `room_types` tanımlıysa)
+    (+ iptal koşulu, `compare_by_cancellation` açıksa). Böylece iadeli/iadesiz ve farklı oda tipleri karışmaz."""
+    matchers = _room_matchers(cfg)
     groups: dict[tuple, dict[str, tuple[Offer, float]]] = {}
+    unmatched = 0
     for offer, total in _converted(offers, cfg):
-        key = (offer.hotel_id, offer.check_in, offer.stay_name, offer.board)
+        room_type = ""
+        if offer.hotel_id in matchers:
+            matched = _room_type(matchers[offer.hotel_id], offer.room_name)
+            if matched is None:
+                unmatched += 1       # oda tipi eşlemesine uymayan teklif kıyaslanmaz (Ham Teklifler'de durur)
+                continue
+            room_type = matched
+        policy = _cancel_policy(offer.free_cancellation) if cfg.compare_by_cancellation else "any"
+        key = (offer.hotel_id, offer.check_in, offer.stay_name, offer.board, room_type, policy)
         best = groups.setdefault(key, {})
         seller_key = offer.seller.lower()
         if seller_key not in best or total < best[seller_key][1]:
             best[seller_key] = (offer, total)
 
+    if unmatched:
+        log.info("%d teklif oda tipi eşlemesine (room_types) uymadığı için karşılaştırmaya alınmadı", unmatched)
     comparisons: list[Comparison] = []
-    for (hotel_id, check_in, stay_name, board), by_seller in sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2], kv[0][3])):
+    for (hotel_id, check_in, stay_name, board, room_type, policy), by_seller in sorted(groups.items(), key=lambda kv: tuple(map(str, kv[0]))):
         entries = sorted(by_seller.values(), key=lambda e: e[1])
         direct = [e for e in entries if is_direct(e[0].seller, cfg.direct_sellers)]
         ref_offer, ref_total = direct[0] if direct else entries[0]
@@ -128,6 +161,7 @@ def build_comparisons(offers: list[Offer], cfg: Config) -> list[Comparison]:
                 hotel_id=hotel_id, check_in=check_in, stay_name=stay_name, nights=first.nights,
                 adults=first.adults, children=first.children, board=board,
                 reference_seller=ref_offer.seller, reference_total=ref_total, rows=rows,
+                room_type=room_type, cancel_policy=policy,
             )
         )
     return comparisons

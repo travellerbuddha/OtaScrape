@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
+import re
 from typing import Any
 
 import yaml
@@ -26,6 +27,7 @@ class HotelConfig:
     name: str
     own: bool
     channels: dict[str, ChannelConfig]
+    room_types: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -47,6 +49,7 @@ class Config:
     pax_basis: str
     parity_tolerance_pct: float
     only_free_cancellation: bool
+    compare_by_cancellation: bool
     direct_sellers: list[str]
     database: str
     output_dir: str
@@ -100,7 +103,17 @@ def _parse_hotel(raw: dict[str, Any]) -> HotelConfig:
         if options.get("price_basis") not in (None, "total", "per_night"):
             raise ConfigError(f"{where}.channels.{channel}: price_basis 'total' veya 'per_night' olmalı")
         channels[str(channel).lower()] = ChannelConfig(url=url, options=options)
-    return HotelConfig(id=hid, name=str(raw.get("name", hid)), own=bool(raw.get("own", False)), channels=channels)
+    room_types: dict[str, list[str]] = {}
+    for canonical, patterns in (raw.get("room_types") or {}).items():
+        plist = [patterns] if isinstance(patterns, str) else list(patterns)
+        for pattern in plist:
+            try:
+                re.compile(str(pattern))
+            except re.error as exc:
+                raise ConfigError(f"{where}.room_types.{canonical}: geçersiz regex {pattern!r} ({exc})") from exc
+        room_types[str(canonical)] = [str(x) for x in plist]
+    return HotelConfig(id=hid, name=str(raw.get("name", hid)), own=bool(raw.get("own", False)), channels=channels,
+                       room_types=room_types)
 
 
 def parse_config(data: dict[str, Any]) -> Config:
@@ -139,6 +152,7 @@ def parse_config(data: dict[str, Any]) -> Config:
         pax_basis=pax_basis,
         parity_tolerance_pct=float(data.get("parity_tolerance_pct", 1.0)),
         only_free_cancellation=bool(data.get("only_free_cancellation", False)),
+        compare_by_cancellation=bool(data.get("compare_by_cancellation", True)),
         direct_sellers=[str(x).lower() for x in data.get("direct_sellers", [])],
         database=str(data.get("database", "data/otascrape.db")),
         output_dir=str(data.get("output_dir", "data/reports")),

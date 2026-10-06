@@ -101,3 +101,44 @@ def test_price_changes(cfg):
     curr = [offer("Booking.com", 1100), offer("Expedia", 1000), offer("Trip.com", 900)]
     ch = price_changes(prev, curr, cfg)
     assert len(ch) == 1 and ch[0].seller == "Booking.com" and ch[0].diff_pct == pytest.approx(10)
+
+
+def _cfg_with(**extra):
+    base = {"base_currency": "EUR", "fx": {"EUR": 1}, "direct_sellers": ["hotel site"], "parity_tolerance_pct": 1.0,
+            "stays": [{"name": "6N-2AD", "nights": 6, "adults": 2}], "checkin": {"offsets_days": [10]},
+            "hotels": [{"id": "h1", "name": "H1", "channels": {"trivago": "u"}, **extra.pop("hotel", {})}]}
+    base.update(extra)
+    return parse_config(base)
+
+
+def _offer(seller, total, room="Deluxe Room", free=None, board="AI"):
+    return Offer("h1", "trivago", seller, "6N-2AD", date(2026, 11, 6), 6, 2, 0, room, board, total, "EUR", free, True, "u", datetime(2026, 10, 7))
+
+
+def test_groups_by_cancellation_policy_by_default():
+    cfg = _cfg_with()
+    offers = [_offer("Hotel Site", 1000, free=False), _offer("Hotel Site", 1200, free=True),
+              _offer("Booking.com", 900, free=False), _offer("Booking.com", 1300, free=True), _offer("Expedia", 1100)]
+    comps = {c.cancel_policy: c for c in build_comparisons(offers, cfg)}
+    assert set(comps) == {"nofree", "free", "unknown"}
+    nofree = {r.seller: r for r in comps["nofree"].rows}
+    assert nofree["Booking.com"].parity_breach and nofree["Hotel Site"].is_reference     # iadesiz-iadesiz kıyas
+    assert not any(r.parity_breach for r in comps["free"].rows)                        # iadeli: 1300 > 1200
+    assert [r.seller for r in comps["unknown"].rows] == ["Expedia"]
+
+
+def test_room_types_map_names_and_drop_unmatched():
+    cfg = _cfg_with(hotel={"room_types": {"Deluxe": ["^deluxe (room|oda)\\b", "^delüks"], "Family": "family"}})
+    offers = [_offer("Hotel Site", 2000, "Deluxe Room - NR"), _offer("Hotels.com", 1500, "Deluxe Oda, 1 Yatak Odası"),
+              _offer("Hotel Site", 3000, "Deluxe Family Room - NR"), _offer("Hotels.com", 2900, "Family Dubleks"),
+              _offer("Hotels.com", 100, "Standard Suite")]
+    comps = {c.room_type: c for c in build_comparisons(offers, cfg)}
+    assert set(comps) == {"Deluxe", "Family"}                       # 'Standard Suite' eşlemeye uymadı, dışarıda
+    assert [r.seller for r in comps["Deluxe"].rows] == ["Hotels.com", "Hotel Site"]
+    assert comps["Deluxe"].rows[0].parity_breach                     # 1500 < 2000
+    assert comps["Family"].rows[0].total == 2900
+
+
+def test_room_types_config_validation():
+    with pytest.raises(ConfigError, match="geçersiz regex"):
+        _cfg_with(hotel={"room_types": {"Deluxe": ["("]}})

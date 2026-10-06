@@ -59,6 +59,7 @@ Zamanlama (günlük 06:00):
 - **Gecelik** = toplam / gece. **Kişi başı gecelik** = toplam / gece / kişi (`pax_basis: adults` yalnız yetişkin, `all_guests` yetişkin+çocuk).
 - **Karşılaştırma grubu** = otel + giriş tarihi + konaklama + **pansiyon tipi** (RO/BB/HB/FB/AI/UAI). Farklı pansiyonlar birbiriyle kıyaslanmaz. Grup içinde her satıcının en ucuz teklifi alınır.
 - **Referans** = `direct_sellers` ile eşleşen satıcı (yoksa en ucuz teklif). Fark referansa göre tutar ve % olarak verilir.
+- **Gruplar**: Karşılaştırma yalnızca benzerler arasında yapılır: pansiyon + (otelde `room_types` tanımlıysa) oda tipi + (`compare_by_cancellation: true` ise) iptal koşulu. Aksi halde iadeli/iadesiz fiyatlar ve farklı oda tipleri karışır. `room_types` yoksa rapor bu konuda uyarır.
 - **Parite ihlali** = direkt fiyat varken başka bir satıcı onun `parite_toleransı`'ndan fazla altında.
 - **Fiyat değişimi** = aynı otel/satıcı/tarih/konaklama/pansiyon için bir önceki taramaya göre fark.
 - `only_free_cancellation: true` ile yalnız ücretsiz iptalli teklifler kıyaslanır.

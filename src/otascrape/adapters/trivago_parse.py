@@ -21,10 +21,15 @@ from .base import FatalScrapeError, ScrapeError
 
 log = logging.getLogger(__name__)
 
-# Etiket kodları (ns, id). YALNIZCA iki teklifin DOM etiketleriyle karşılaştırılarak çıkarıldı:
-# 411:5 = Her şey dahil, 412:1 = Ücretsiz iptal. Diğer kodlar bilinmiyor ve loglanır.
-BOARD_CODES: dict[tuple[int, int], str] = {(411, 5): "AI"}
+# Etiket kodları (ns, id) — gerçek yakalamalarla doğrulandı:
+#  411 = pansiyon: 5 Her şey dahil (sayfada 'All-inclusive'), 2 Kahvaltı dahil ('Breakfast included'),
+#        1 etiket yok = yalnız oda (zayıf kanıt: tek acentanın etiketsiz teklifleri, fiyat düzeyi de bununla uyumlu)
+#  412 = iptal: 1 ücretsiz iptal, 2 ücretsiz iptal yok. Otelin kendi sitesindeki "- R" (iadeli) / "- NR" (iadesiz)
+#        tarife adlarıyla 18/18 satırda örtüştü.
+# 413, 402 ve diğerleri sabit/anlamsız görünüyor; yok sayılır.
+BOARD_CODES: dict[tuple[int, int], str] = {(411, 5): "AI", (411, 2): "BB", (411, 1): "RO"}
 FREE_CANCEL_CODES: set[tuple[int, int]] = {(412, 1)}
+NO_FREE_CANCEL_CODES: set[tuple[int, int]] = {(412, 2)}
 KNOWN_NAMESPACES = (411, 412)
 
 _STAY = re.compile(r'"stayPeriod":\{"arrival":"(\d{4}-\d{2}-\d{2})","departure":"(\d{4}-\d{2}-\d{2})"')
@@ -179,14 +184,20 @@ def parse_trivago(blobs: list[Any], sources: list[dict[str, str]], html: str, se
             continue
 
         codes = _codes(deal)
-        unknown.update(c for c in codes if c[0] in KNOWN_NAMESPACES and c not in BOARD_CODES and c not in FREE_CANCEL_CODES)
+        unknown.update(c for c in codes if c[0] in KNOWN_NAMESPACES and c not in BOARD_CODES
+                       and c not in FREE_CANCEL_CODES and c not in NO_FREE_CANCEL_CODES)
         board = next((BOARD_CODES[c] for c in codes if c in BOARD_CODES), None)
         if board is None:
             # Pansiyon kodu var ama anlamı bilinmiyor: 'UNKNOWN' yapılırsa default_board (ör. AI) yanlışlıkla
             # uygulanır. Ham kodla (T411-1) ayrı grupta kalır ve raporda görünür.
             meal = next((c for c in codes if c[0] == 411), None)
             board = f"T{meal[0]}-{meal[1]}" if meal else "UNKNOWN"
-        free = True if any(c in FREE_CANCEL_CODES for c in codes) or _dig(deal, "priceDetails", "freeCancellationDeadline") else None
+        if any(c in FREE_CANCEL_CODES for c in codes) or _dig(deal, "priceDetails", "freeCancellationDeadline"):
+            free: bool | None = True
+        elif any(c in NO_FREE_CANCEL_CODES for c in codes):
+            free = False
+        else:
+            free = None
 
         adv_id = _dig(deal, "advertiserDetails", "nsid", "id")
         seller = names.get(adv_id) or f"Trivago acente #{adv_id}"

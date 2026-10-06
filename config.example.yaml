@@ -11,6 +11,7 @@ fx:                         # 1 birim X = kaç base_currency. Farklı para birim
 pax_basis: adults           # Kişi başı hesap: 'adults' (yalnız yetişkin) | 'all_guests' (yetişkin+çocuk)
 parity_tolerance_pct: 1.0   # Direkt fiyatın bu yüzdeden fazla altındaki acenta = parite ihlali
 only_free_cancellation: false   # true: yalnız ücretsiz iptalli teklifler karşılaştırılır
+compare_by_cancellation: true   # true: iadeli ile iadesiz teklifler ayrı gruplarda kıyaslanır (önerilir)
 
 # Satıcı adında bu ifadelerden biri geçiyorsa "direkt kanal" sayılır (küçük harf, içerir mantığı).
 direct_sellers: ["official site", "hotel site", "swandor", "mardan"]   # Trivago'da otelin kendi sitesi "Hotel Site" olarak görünür
@@ -63,6 +64,12 @@ hotels:
       # Check24 / TripAdvisor / Expedia: yerleşik URL oluşturucu yok. Sitede aranızı yapın, URL'yi kopyalayın,
       # tarih ve kişileri yer tutucularla değiştirin:
       # check24: {url: "https://hotel.check24.de/...?checkin={check_in}&checkout={check_out}&adults={adults}", price_basis: total}
+    # Kanallardaki farklı oda adlarını tek oda tipine eşler; eşleşmeyen teklifler kıyaslanmaz (Ham Teklifler'de durur).
+    # Tanımlamazsanız her satıcının EN UCUZ odası kıyaslanır ve farklı oda tipleri karışır. Regex, büyük/küçük harf duyarsız;
+    # YAML'da tek tırnak kullanın (ters eğik çizgiyi iki katlamak gerekmez).
+    # room_types:
+    #   Deluxe: ['^deluxe (room|oda)\b', '^delüks oda']
+    #   Deluxe Superior: ['^deluxe superior (room|oda)\b']
   - id: rakip-ornek
     name: Rakip Otel (örnek)
     channels:

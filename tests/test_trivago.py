@@ -72,7 +72,7 @@ def test_parse_offers_in_eur_via_eurocents():
     assert setur.total_price == round(28198 / 100 * 6, 2) and setur.currency == "EUR"
     assert setur.board == "AI" and setur.free_cancellation is True and setur.taxes_included is True
     assert setur.room_name.startswith("Deluxe Oda") and setur.nights == 6 and setur.check_in == date(2026, 10, 12)
-    assert offers["Agoda"].free_cancellation is None                                    # 412:2 anlamı bilinmiyor -> None
+    assert offers["Agoda"].free_cancellation is False                                   # 412:2 = ücretsiz iptal yok
     assert offers["Agoda"].seller == "Agoda"                                            # getAdvertiserDetails, sayfa adından öncelikli
     assert offers["Hotel Site"].total_price == round(41283 / 100 * 6, 2)               # ad yalnızca DOM'da
     assert offers["Trivago acente #9999"].board == "T411-7" and offers["Trivago acente #9999"].free_cancellation is True   # bilinmeyen kod AI'ya karışmaz
@@ -163,6 +163,16 @@ def test_after_load_clicks_the_right_card_in_a_real_browser():
         browser.close()
     finally:
         pw.stop()
+
+
+def test_verified_code_meanings():
+    def one(codes):
+        blob = {"data": {"getAccommodationDeals": {"deals": [deal(3008, "Oda", 93293, 15549, 28198, codes, "k1")]}}}
+        return parse_trivago([*ADV, blob], [{}] * len(ADV) + [{"post": POST}], HTML, search())[0]
+    assert (one([(411, 5), (412, 1)]).board, one([(411, 5), (412, 1)]).free_cancellation) == ("AI", True)
+    assert (one([(411, 2), (412, 2)]).board, one([(411, 2), (412, 2)]).free_cancellation) == ("BB", False)
+    assert one([(411, 1)]).board == "RO" and one([(411, 1)]).free_cancellation is None
+    assert one([(411, 5), (413, 1), (402, 1)]).board == "AI"        # 413/402 yok sayılır
 
 
 def test_deal_without_meal_code_stays_unknown():
