@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import time
 from datetime import date, datetime
 
@@ -20,6 +21,20 @@ def apply_default_board(offers, search) -> None:
         for offer in offers:
             if offer.board == "UNKNOWN":
                 offer.board = str(default).upper()
+
+
+def filter_rooms(offers, search):
+    """Kanal ayarındaki `room_include` / `room_exclude` (regex, büyük/küçük harf duyarsız) ile oda tiplerini
+    süzer. Farklı oda tiplerinin fiyatlarını kıyaslamamak için kullanılır (ör. yalnız 'deluxe|delüks')."""
+    include, exclude = search.options.get("room_include"), search.options.get("room_exclude")
+    kept = offers
+    if include:
+        pattern = re.compile(str(include), re.I)
+        kept = [o for o in kept if pattern.search(o.room_name)]
+    if exclude:
+        pattern = re.compile(str(exclude), re.I)
+        kept = [o for o in kept if not pattern.search(o.room_name)]
+    return kept
 
 
 def run_scrape(config: Config, conn, mock: bool = False, sleep=time.sleep, today: date | None = None) -> int:
@@ -44,6 +59,7 @@ def run_scrape(config: Config, conn, mock: bool = False, sleep=time.sleep, today
             try:
                 offers = registry.get(search.channel).fetch(search)
                 apply_default_board(offers, search)
+                offers = filter_rooms(offers, search)
                 db.save_offers(conn, run_id, offers)
                 log.info("%s -> %d teklif", label, len(offers))
             except Exception as exc:

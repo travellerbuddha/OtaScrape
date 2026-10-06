@@ -62,6 +62,7 @@ class BrowserAdapter(Adapter):
         self._pw = None
         self._browser = None
         self._context = None
+        self._current_search: Search | None = None
 
     # -- alt sınıfların yazacağı kısım --------------------------------------------
     @abstractmethod
@@ -69,6 +70,9 @@ class BrowserAdapter(Adapter):
 
     @abstractmethod
     def parse(self, capture: PageCapture, search: Search) -> list[Offer]: ...
+
+    def after_load(self, page: Any, search: Search | None) -> None:
+        """Sayfa yüklendikten sonra yapılacak etkileşimler (tıklama vb.). Varsayılan: hiçbir şey."""
 
     # -- tarayıcı -----------------------------------------------------------------
     def _ensure_browser(self) -> None:
@@ -122,6 +126,7 @@ class BrowserAdapter(Adapter):
                 for _ in range(4):
                     page.mouse.wheel(0, 1200)
                     page.wait_for_timeout(1200)
+            self.after_load(page, self._current_search)
             if self.settle_ms:
                 page.wait_for_timeout(self.settle_ms)
             if self.manual_pause:
@@ -155,6 +160,7 @@ class BrowserAdapter(Adapter):
     # -- Adapter arayüzü ----------------------------------------------------------
     def fetch(self, search: Search) -> list[Offer]:
         url = self.build_url(search)  # yapılandırma hataları burada, retry olmadan yükselir
+        self._current_search = search
         last_error: Exception | None = None
         for _ in range(self._s.retries + 1):
             capture: PageCapture | None = None
@@ -174,6 +180,7 @@ class BrowserAdapter(Adapter):
     def probe(self, search: Search, out_dir: Path) -> dict[str, Any]:
         """Sayfayı bir kez açar, HTML + JSON yanıtlarını diske yazar ve ayrıştırmayı dener."""
         url = self.build_url(search)
+        self._current_search = search
         capture = self.fetch_page(url)
         stem = f"probe_{self.channel}_{search.hotel_id}_{search.check_in}_{search.stay.name}"
         out_dir.mkdir(parents=True, exist_ok=True)

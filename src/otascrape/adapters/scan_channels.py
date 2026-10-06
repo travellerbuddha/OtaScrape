@@ -10,6 +10,7 @@ Diğerleri için config'teki URL'de yer tutucu kullanın, ör.
 """
 from __future__ import annotations
 
+import logging
 import re
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
@@ -18,6 +19,9 @@ from ..normalize import detect_free_cancellation, detect_taxes_included, normali
 from .base import FatalScrapeError, ScrapeError
 from .browser import BrowserAdapter, PageCapture, render_template
 from .jsonscan import scan_deals
+from .trivago_parse import parse_trivago, slug_from_url
+
+log = logging.getLogger(__name__)
 
 _NO_AVAILABILITY = re.compile(r"no availability|not available|sold out|müsait değil|uygun oda yok|keine verfügbarkeit", re.I)
 
@@ -82,6 +86,9 @@ def _now():
 
 
 class TrivagoAdapter(ScanAdapter):
+    """Trivago: arama `drs-40` ile kullanıcı seçimi gibi yapılır, ardından ilgili otelin 'Show all prices'
+    paneli açılır ve sayfanın kendi `accommodationDealsQuery` yanıtı okunur (bkz. trivago_parse)."""
+
     channel = "trivago"
 
     def build_builtin_url(self, search: Search) -> str:
@@ -93,8 +100,52 @@ class TrivagoAdapter(ScanAdapter):
         if not re.fullmatch(r"\d+-\d+", token):
             raise FatalScrapeError("trivago: URL'de 'search=<tip>-<id>' bulunamadı; Trivago'da otel sayfasını açıp tam URL'yi kopyalayın")
         s = search
-        value = f"{token};dr-{s.check_in:%Y%m%d}-{s.check_out:%Y%m%d};rc-1-{s.stay.adults}"
+        # Biçim, tarihleri elle seçince sayfanın ürettiği URL'nin aynısıdır: dr-…;drs-40;rc-1-N
+        value = f"{token};dr-{s.check_in:%Y%m%d}-{s.check_out:%Y%m%d};drs-40;rc-1-{s.stay.adults}"
         return urlunsplit((parts.scheme, parts.netloc, parts.path, f"search={value}", parts.fragment))  # fragment (#::hasInteracted=true gibi) korunur
+
+    # -- sayfa etkileşimi ---------------------------------------------------------
+    def after_load(self, page, search) -> None:
+        self._dismiss_consent(page)
+        try:
+            page.wait_for_selector('[data-testid="accommodation-list-element"]', timeout=25_000)
+        except Exception:
+            log.warning("trivago: otel listesi görünmedi")
+            return
+        cards = page.locator('[data-testid="accommodation-list-element"]')
+        card = cards.first
+        slug = slug_from_url(search.url) if search else None
+        if slug:
+            mine = cards.filter(has=page.locator(f'a[href*="{slug}"]'))
+            if mine.count():
+                card = mine.first
+        button = card.locator('[data-testid="additional-prices-slideout-entry-point"]').first
+        if button.count() == 0:
+            log.warning("trivago: 'Show all prices' düğmesi bulunamadı; yalnızca kısa teklif listesi okunabilir")
+            return
+        try:
+            button.scroll_into_view_if_needed(timeout=5_000)
+            try:
+                button.click(timeout=8_000)
+            except Exception:  # üstte bir katman (çerez bandı vb.) tıklamayı engelliyor olabilir
+                button.dispatch_event("click")
+            page.wait_for_selector('[data-testid="all-slideout-deals"]', timeout=15_000)
+            page.wait_for_timeout(1_500)
+        except Exception as exc:
+            log.warning("trivago: fiyat paneli açılamadı: %s", exc)
+
+    @staticmethod
+    def _dismiss_consent(page) -> None:
+        for selector in ('[data-testid="uc-deny-all-button"]', 'button:has-text("Deny")', 'button:has-text("Reject all")'):
+            try:
+                page.locator(selector).first.click(timeout=2_500)
+                page.wait_for_timeout(500)
+                return
+            except Exception:
+                continue
+
+    def parse(self, capture: PageCapture, search: Search) -> list[Offer]:
+        return parse_trivago(capture.blobs, capture.sources, capture.html, search)
 
 
 class TripComAdapter(ScanAdapter):

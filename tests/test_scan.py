@@ -56,16 +56,16 @@ def test_parse_requires_price_basis_when_ambiguous():
     cap = PageCapture("u", 200, "<html></html>", [{"advertiser": "Booking.com", "price": 210}])
     s = make_search()
     with pytest.raises(FatalScrapeError, match="price_basis"):
-        adapter(TrivagoAdapter).parse(cap, s)
-    offers = adapter(TrivagoAdapter).parse(cap, make_search(price_basis="per_night"))
+        adapter(Check24Adapter).parse(cap, s)
+    offers = adapter(Check24Adapter).parse(cap, make_search(price_basis="per_night"))
     assert offers[0].total_price == 1470 and offers[0].seller == "Booking.com"
-    offers = adapter(TrivagoAdapter).parse(cap, make_search(price_basis="total"))
+    offers = adapter(Check24Adapter).parse(cap, make_search(price_basis="total"))
     assert offers[0].total_price == 210
 
 
 def test_parse_full_trivago_like():
     cap = PageCapture("u", 200, "<html></html>", [TRIVAGO_LIKE])
-    offers = {o.seller: o for o in adapter(TrivagoAdapter).parse(cap, make_search(price_basis="per_night"))}
+    offers = {o.seller: o for o in adapter(Check24Adapter).parse(cap, make_search(price_basis="per_night"))}
     assert offers["Expedia"].total_price == 1500                 # açık toplam alanı: kanal ayarından etkilenmez
     assert offers["Official Site"].total_price == 195 * 7 and offers["Official Site"].board == "AI"
     assert offers["Booking.com"].free_cancellation is True and offers["Booking.com"].board == "BB"
@@ -74,8 +74,8 @@ def test_parse_full_trivago_like():
 
 def test_parse_empty_and_no_availability():
     with pytest.raises(ScrapeError, match="probe"):
-        adapter(TrivagoAdapter).parse(PageCapture("u", 200, "<html>garip</html>", []), make_search())
-    assert adapter(TrivagoAdapter).parse(PageCapture("u", 200, "<html>Sorry, sold out</html>", []), make_search()) == []
+        adapter(Check24Adapter).parse(PageCapture("u", 200, "<html>garip</html>", []), make_search())
+    assert adapter(Check24Adapter).parse(PageCapture("u", 200, "<html>Sorry, sold out</html>", []), make_search()) == []
 
 
 def test_room_mode_fixed_seller():
@@ -98,7 +98,7 @@ def test_render_template():
 
 def test_trivago_builtin_url():
     url = adapter(TrivagoAdapter).build_url(make_search(url="https://www.trivago.com/en-US/oar/hotel-x?search=100-12345;dr-20260101-20260102;rc-1-1&foo=1"))
-    assert url == "https://www.trivago.com/en-US/oar/hotel-x?search=100-12345;dr-20261101-20261108;rc-1-2"
+    assert url == "https://www.trivago.com/en-US/oar/hotel-x?search=100-12345;dr-20261101-20261108;drs-40;rc-1-2"
     with pytest.raises(FatalScrapeError, match="search="):
         adapter(TrivagoAdapter).build_url(make_search(url="https://www.trivago.com/en-US/oar/hotel-x"))
     with pytest.raises(FatalScrapeError, match="çocuklu"):
@@ -175,19 +175,19 @@ def test_blocked_channel_is_skipped_after_first_block(tmp_path, monkeypatch):
 
 def test_probe_command(tmp_path, monkeypatch, capsys):
     html = "<html>" + "x" * 100 + "</html>"
-    monkeypatch.setattr(TrivagoAdapter, "fetch_page", lambda self, url: PageCapture(url, 200, html, [TRIVAGO_LIKE]))
+    monkeypatch.setattr(Check24Adapter, "fetch_page", lambda self, url: PageCapture(url, 200, html, [TRIVAGO_LIKE]))
     p = tmp_path / "c.yaml"
     p.write_text(yaml.safe_dump({
         "database": str(tmp_path / "t.db"), "output_dir": str(tmp_path / "out"), "scraper": {"debug_dir": str(tmp_path / "dbg")},
         "stays": [{"name": "7N-2AD", "nights": 7, "adults": 2}], "checkin": {"offsets_days": [10]},
-        "hotels": [{"id": "a", "channels": {"trivago": {"url": "https://t/x?search=100-1", "price_basis": "per_night"}}}],
+        "hotels": [{"id": "a", "channels": {"check24": {"url": "https://c/x?d={check_in}", "price_basis": "per_night"}}}],
     }))
-    assert main(["-c", str(p), "probe", "--hotel", "a", "--channel", "trivago"]) == 0
+    assert main(["-c", str(p), "probe", "--hotel", "a", "--channel", "check24"]) == 0
     out = capsys.readouterr().out
     assert "offers: 3" in out and "json_blobs: 1" in out
-    files = sorted(x.suffix for x in (tmp_path / "dbg").glob("probe_trivago_*"))
+    files = sorted(x.suffix for x in (tmp_path / "dbg").glob("probe_check24_*"))
     assert files == [".html", ".json"]
-    assert main(["-c", str(p), "probe", "--hotel", "zzz", "--channel", "trivago"]) == 2
+    assert main(["-c", str(p), "probe", "--hotel", "zzz", "--channel", "check24"]) == 2
 
 
 def test_probe_with_url_and_headed(tmp_path, monkeypatch, capsys):
@@ -197,23 +197,23 @@ def test_probe_with_url_and_headed(tmp_path, monkeypatch, capsys):
         seen["headless"], seen["url"] = self._s.headless, url
         return PageCapture(url, 200, "<html>" + "x" * 100 + "</html>", [TRIVAGO_LIKE])
 
-    monkeypatch.setattr(TrivagoAdapter, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(Check24Adapter, "fetch_page", fake_fetch_page)
     p = tmp_path / "c.yaml"
     p.write_text(yaml.safe_dump({
         "database": str(tmp_path / "t.db"), "scraper": {"debug_dir": str(tmp_path / "dbg"), "headless": True},
         "stays": [{"name": "7N-2AD", "nights": 7, "adults": 2}], "checkin": {"offsets_days": [10]},
-        "hotels": [{"id": "other", "channels": {"booking": "https://b/x"}}],   # trivago config'te yok
+        "hotels": [{"id": "other", "channels": {"booking": "https://b/x"}}],   # check24 config'te yok
     }))
-    args = ["-c", str(p), "probe", "--hotel", "mardan-palace", "--channel", "trivago", "--headed",
-            "--url", "https://www.trivago.com/en-US/oar/x?search=100-77", "--price-basis", "per_night"]
+    args = ["-c", str(p), "probe", "--hotel", "mardan-palace", "--channel", "check24", "--headed",
+            "--url", "https://c/x?d={check_in}", "--price-basis", "per_night"]
     assert main(args) == 0
-    assert seen["headless"] is False and "search=100-77;dr-" in seen["url"]
+    assert seen["headless"] is False and "d=2026-" in seen["url"]
     assert "offers: 3" in capsys.readouterr().out
 
 
 def test_trivago_keeps_url_fragment():
     url = adapter(TrivagoAdapter).build_url(make_search(url="https://www.trivago.com.tr/en-US/lm/x?search=100-151839;dr-20261019-20261025;drs-40#::hasInteracted=true"))
-    assert url == "https://www.trivago.com.tr/en-US/lm/x?search=100-151839;dr-20261101-20261108;rc-1-2#::hasInteracted=true"
+    assert url == "https://www.trivago.com.tr/en-US/lm/x?search=100-151839;dr-20261101-20261108;drs-40;rc-1-2#::hasInteracted=true"
 
 
 def test_probe_manual_reports_final_url(tmp_path, monkeypatch, capsys):
@@ -223,14 +223,14 @@ def test_probe_manual_reports_final_url(tmp_path, monkeypatch, capsys):
         seen["manual"], seen["headless"] = self.manual_pause, self._s.headless
         return PageCapture(url, 200, "<html>" + "x" * 100 + "</html>", [TRIVAGO_LIKE], final_url=url + "&elle=secildi")
 
-    monkeypatch.setattr(TrivagoAdapter, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(Check24Adapter, "fetch_page", fake_fetch_page)
     p = tmp_path / "c.yaml"
     p.write_text(yaml.safe_dump({
         "database": str(tmp_path / "t.db"), "scraper": {"debug_dir": str(tmp_path / "dbg")},
         "stays": [{"name": "7N-2AD", "nights": 7, "adults": 2}], "checkin": {"offsets_days": [10]},
-        "hotels": [{"id": "a", "channels": {"trivago": {"url": "https://t/x?search=100-1", "price_basis": "per_night"}}}],
+        "hotels": [{"id": "a", "channels": {"check24": {"url": "https://c/x?d={check_in}", "price_basis": "per_night"}}}],
     }))
-    assert main(["-c", str(p), "probe", "--hotel", "a", "--channel", "trivago", "--manual"]) == 0
+    assert main(["-c", str(p), "probe", "--hotel", "a", "--channel", "check24", "--manual"]) == 0
     assert seen == {"manual": True, "headless": False}
     out = capsys.readouterr().out
     assert "final_url: " in out and "&elle=secildi" in out

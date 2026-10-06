@@ -13,7 +13,7 @@ parity_tolerance_pct: 1.0   # Direkt fiyatın bu yüzdeden fazla altındaki acen
 only_free_cancellation: false   # true: yalnız ücretsiz iptalli teklifler karşılaştırılır
 
 # Satıcı adında bu ifadelerden biri geçiyorsa "direkt kanal" sayılır (küçük harf, içerir mantığı).
-direct_sellers: ["official site", "swandor", "mardan"]
+direct_sellers: ["official site", "hotel site", "swandor", "mardan"]   # Trivago'da otelin kendi sitesi "Hotel Site" olarak görünür
 
 database: data/otascrape.db
 output_dir: data/reports
@@ -51,11 +51,13 @@ hotels:
     own: true
     channels:
       booking: {url: "https://www.booking.com/hotel/tr/mardan-palace.html"}
-      # Trivago: otel sayfasını açın, URL'deki search=100-XXXXX kısmı yeterli; tarih/kişi otomatik eklenir.
+      # Trivago: otel sayfasını açıp tam URL'yi yapıştırın (search=100-XXXXX ve sondaki #::hasInteracted=true kalsın).
+      # Tarih/kişi otomatik eklenir, tüm acenta fiyatları için "Show all prices" paneli açılır.
       trivago:
-        url: "https://www.trivago.com/en-US/oar/ORNEK-OTEL?search=100-12345"
-        price_basis: per_night
-        default_board: AI
+        url: "https://www.trivago.com.tr/en-US/lm/ORNEK-OTEL-SLUG?search=100-12345#::hasInteracted=true"
+        default_board: AI              # pansiyon etiketi okunamayan teklifler için (her şey dahil oteller)
+        # room_include: "deluxe|delüks"   # farklı oda tiplerini kıyaslamamak için (regex, büyük/küçük harf duyarsız)
+        # room_exclude: "suit|villa"
       # Trip.com: otel detay sayfasının tam URL'si (hotelId zorunlu).
       # tripcom: {url: "https://www.trip.com/hotels/detail/?cityId=XXX&hotelId=YYYY", price_basis: total}
       # Check24 / TripAdvisor / Expedia: yerleşik URL oluşturucu yok. Sitede aranızı yapın, URL'yi kopyalayın,

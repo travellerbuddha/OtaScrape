@@ -9,7 +9,7 @@ Seçtiğiniz otellerin fiyatlarını OTA ve metasearch kanallarında (Booking, E
 | Yapılandırma, DB, hesaplama, karşılaştırma, Excel/HTML rapor, CLI | Hazır, testli |
 | Ortak tarayıcı katmanı (engel tespiti, retry, HTML dökümü, `probe`) | Hazır; gerçek ağda Booking, Trivago, Trip.com ile denendi |
 | **Booking** | Yazıldı; ayrıştırma sentetik HTML ile test edildi. **Gerçek fiyat tablosu görülemedi** (aşağıya bakın) |
-| **Trivago** | URL oluşturucu kaynaklı biçime göre yazıldı; JSON ayrıştırma sezgisel. **Deneysel**: geliştirme ortamından HTTP 403 verdi, gerçek yanıt hiç görülmedi |
+| **Trivago** | Gerçek bir yakalamadaki (Antalya) veri yapısına göre yazıldı: tarih URL'den (`drs-40`), tüm acenta teklifleri sayfanın `accommodationDealsQuery` yanıtından, EUR karşılığı Trivago'nun kendi çevriminden. Ayrıştırma ve tıklama akışı testli; **canlı uçtan uca ilk deneme bekleniyor**. Pansiyon/iptal kodlarından yalnızca 411:5 (her şey dahil) ve 412:1 (ücretsiz iptal) bilinir |
 | **Trip.com** | URL oluşturucu kaynaklı biçime göre yazıldı. Sayfa açılıyor (200) ama oda fiyatları ilk yüklemede yok; fiyat verisinin nereden geldiği doğrulanmadı. **Deneysel** |
 | **Check24, TripAdvisor, Expedia** | Yalnızca URL şablonu + sezgisel JSON ayrıştırma. Hiç denenmedi. **Deneysel** |
 
@@ -17,7 +17,7 @@ Seçtiğiniz otellerin fiyatlarını OTA ve metasearch kanallarında (Booking, E
 
 ### Geliştirme ortamında gözlenenler (kendi ağınızda farklı olabilir)
 - **Booking**, WAF doğrulamasını headless Chromium'da kendiliğinden geçiyor ama parametreli URL'yi (`?checkin=…`) 301 ile parametresiz adrese yönlendiriyor; sayfa "Select dates to see availability" diyor ve fiyat tablosu gelmiyor. Adaptör bu durumu artık "tarih parametrelerini uygulamadı" hatası olarak bildirir (önceden yanlışlıkla "engellendi" diyordu). Kendi ağınızda/proxy'nizle aynı şey oluyorsa çözüm, tarihleri sayfadaki arama formundan seçtirmektir (henüz yazılmadı).
-- **Trivago** bu ortamdan 403 "Access Denied" döndürdü; residential proxy gerekebilir.
+- **Trivago** bulut ortamından 403 "Access Denied" döndürdü; residential proxy gerekebilir.
 
 ## Pratik akış (yeni bir kanal/otel ekleme)
 1. `config.yaml`'a otel + kanal URL'sini ekleyin.
