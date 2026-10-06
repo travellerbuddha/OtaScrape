@@ -1,0 +1,52 @@
+# Kopyalayın: cp config.example.yaml config.yaml  — sonra kendi otellerinizle düzenleyin.
+# NOT: Aşağıdaki URL'ler örnektir; her otelin gerçek kanal sayfasını kendiniz doğrulayıp yapıştırın.
+
+base_currency: EUR          # Tüm fiyatlar raporda bu para birimine çevrilir
+search_currency: EUR        # Kanallardan istenecek para birimi
+fx:                         # 1 birim X = kaç base_currency. Farklı para birimi görürseniz ekleyin.
+  EUR: 1.0
+  USD: 0.92
+  TRY: 0.022
+
+pax_basis: adults           # Kişi başı hesap: 'adults' (yalnız yetişkin) | 'all_guests' (yetişkin+çocuk)
+parity_tolerance_pct: 1.0   # Direkt fiyatın bu yüzdeden fazla altındaki acenta = parite ihlali
+only_free_cancellation: false   # true: yalnız ücretsiz iptalli teklifler karşılaştırılır
+
+# Satıcı adında bu ifadelerden biri geçiyorsa "direkt kanal" sayılır (küçük harf, içerir mantığı).
+direct_sellers: ["official site", "swandor", "mardan"]
+
+database: data/otascrape.db
+output_dir: data/reports
+
+scraper:
+  headless: true
+  delay_seconds: [5, 12]    # İstekler arası rastgele bekleme
+  retries: 2
+  timeout_seconds: 45
+  # proxy_server: "http://proxy.example.com:8000"   # Booking için residential proxy önerilir
+  # proxy_username_env: OTA_PROXY_USER              # Kullanıcı/şifre ortam değişkeninden okunur
+  # proxy_password_env: OTA_PROXY_PASS
+
+# Konaklama şekilleri. adults/children = tüm odalardaki toplam kişi.
+stays:
+  - {name: "7N-2AD", nights: 7, adults: 2}
+  - {name: "7N-2AD-1CH", nights: 7, adults: 2, children: 1, child_ages: [7]}
+  - {name: "3N-2AD", nights: 3, adults: 2}
+
+# Giriş tarihleri: bugünden itibaren gün kaydırmaları ve/veya sabit tarihler.
+checkin:
+  offsets_days: [14, 30, 60]
+  dates: []                 # ör. ["2026-12-31"]
+
+hotels:
+  - id: mardan-palace
+    name: Mardan Palace
+    own: true
+    channels:
+      booking: {url: "https://www.booking.com/hotel/tr/mardan-palace.html"}
+      # expedia: {url: "..."}      # adaptör henüz yok
+      # trivago: {url: "..."}
+  - id: rakip-ornek
+    name: Rakip Otel (örnek)
+    channels:
+      booking: {url: "https://www.booking.com/hotel/tr/example-hotel.html"}
