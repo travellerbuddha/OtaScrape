@@ -22,7 +22,7 @@ Seçtiğiniz otellerin fiyatlarını OTA ve metasearch kanallarında (Booking, E
 ## Pratik akış (yeni bir kanal/otel ekleme)
 1. `config.yaml`'a otel + kanal URL'sini ekleyin.
 2. `otascrape probe --hotel <id> --channel <kanal>`: sayfayı bir kez açar, `data/debug/probe_*.html/.json` dosyalarını kaydeder, kaç teklif ayrıştırabildiğini yazar.
-3. Teklif sayısı 0 veya hata ise yakalanan dosyaları inceleyip ayrıştırmayı düzeltin; fiyat alanı belirsizse `price_basis` ekleyin.
+3. Teklif sayısı 0 veya hata ise `otascrape inspect data/debug/probe_<...>.json` çalıştırın: hangi istekte, hangi JSON yolunda fiyat/acenta alanı olduğunu kısa bir özet olarak yazar (büyük dosyaları paylaşmadan sorun giderilebilir). Fiyat alanı belirsizse `price_basis` ekleyin.
 4. Sonra `otascrape run`.
 
 ## Kurulum
@@ -40,7 +40,8 @@ cp config.example.yaml config.yaml   # otellerinizi, konaklama şekillerini, dir
 otascrape run --mock      # siteye gitmeden sahte veriyle uçtan uca deneme
 otascrape run             # gerçek tarama + rapor
 otascrape report          # son taramadan yeniden rapor
-otascrape probe --hotel mardan-palace --channel trivago   # tek aramayı yakala ve ayrıştırmayı dene
+otascrape probe --hotel mardan-palace --channel trivago --url "<otel sayfası URL'si>" --headed   # tek aramayı yakala ve ayrıştırmayı dene
+otascrape inspect data/debug/probe_trivago_<...>.json   # yakalamanın kısa özeti
 pytest                    # testler
 ```
 

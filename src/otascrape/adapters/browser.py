@@ -29,6 +29,7 @@ class PageCapture:
     status: int | None
     html: str
     blobs: list[Any] = field(default_factory=list)
+    sources: list[dict[str, str]] = field(default_factory=list)  # blobs ile aynı sırada
 
 
 def render_template(url: str, search: Search) -> str:
@@ -105,15 +106,21 @@ class BrowserAdapter(Adapter):
                 except Exception:
                     pass
             blobs: list[Any] = []
+            sources: list[dict[str, str]] = []
             for r in responses:
                 try:
                     if r.status == 200 and "json" in r.headers.get("content-type", ""):
-                        blobs.append(r.json())
+                        body = r.json()
+                        blobs.append(body)
+                        sources.append({"url": r.url[:300], "method": r.request.method,
+                                        "post": (r.request.post_data or "")[:300]})
                 except Exception:  # gövde artık okunamıyor olabilir
                     continue
             html = page.content()
-            blobs.extend(scripts_json(html))
-            return PageCapture(url=url, status=status, html=html, blobs=blobs)
+            inline = scripts_json(html)
+            blobs.extend(inline)
+            sources.extend({"url": "inline-script", "method": "", "post": ""} for _ in inline)
+            return PageCapture(url=url, status=status, html=html, blobs=blobs, sources=sources)
         finally:
             page.close()
 
@@ -150,7 +157,9 @@ class BrowserAdapter(Adapter):
         stem = f"probe_{self.channel}_{search.hotel_id}_{search.check_in}_{search.stay.name}"
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / f"{stem}.html").write_text(capture.html, encoding="utf-8")
-        (out_dir / f"{stem}.json").write_text(json.dumps(capture.blobs, ensure_ascii=False, default=str)[:20_000_000], encoding="utf-8")
+        records = [{"source": (capture.sources[i] if i < len(capture.sources) else {}), "body": b}
+                   for i, b in enumerate(capture.blobs)]
+        (out_dir / f"{stem}.json").write_text(json.dumps(records, ensure_ascii=False, default=str), encoding="utf-8")
         summary: dict[str, Any] = {"url": url, "status": capture.status, "html_bytes": len(capture.html),
                                    "json_blobs": len(capture.blobs), "files": str(out_dir / stem) + ".{html,json}"}
         try:

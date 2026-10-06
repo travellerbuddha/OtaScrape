@@ -85,7 +85,15 @@ def main(argv: list[str] | None = None) -> int:
     probe.add_argument("--url", help="config yerine bu kanal URL'sini kullan (otel/kanal config'te olmasa da çalışır)")
     probe.add_argument("--price-basis", choices=["total", "per_night"], help="sayfadaki fiyat toplam mı gecelik mi")
     probe.add_argument("--headed", action="store_true", help="tarayıcı penceresini göster (bot engelini azaltabilir)")
+    insp = sub.add_parser("inspect", help="probe yakalamasını kısa bir özete çevir (yapıştırıp paylaşmak için)")
+    insp.add_argument("file", help="probe dosyası (.json/.html) veya uzantısız dosya adı")
     args = parser.parse_args(argv)
+
+    if args.cmd == "inspect":
+        from .inspect_capture import summarize
+
+        print("\n".join(summarize(Path(args.file).with_suffix(""))))
+        return 0
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
