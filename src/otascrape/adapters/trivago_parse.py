@@ -122,6 +122,20 @@ def _codes(deal: dict) -> list[tuple[int, int]]:
     return out
 
 
+def _warn_missing_advertisers(html: str, offers: list[Offer]) -> None:
+    """Fiyat panelinde görünen ama okunan tekliflerde olmayan acenteleri uyarı olarak yazar
+    (panel eksik yüklenmiş ya da ayrıştırma bir şeyi kaçırmış olabilir)."""
+    if not html:
+        return
+    soup = BeautifulSoup(html, "html.parser")
+    shown = {el.get_text(" ", strip=True) for el in
+             soup.select('[data-testid="all-slideout-deals"] [data-testid="advertiser-name"]')}
+    have = {o.seller.casefold() for o in offers}
+    missing = sorted(n for n in shown if n and n.casefold() not in have)
+    if missing:
+        log.warning("trivago: panelde görünen %d acente okunan tekliflerde yok: %s", len(missing), ", ".join(missing))
+
+
 def parse_trivago(blobs: list[Any], sources: list[dict[str, str]], html: str, search: Search) -> list[Offer]:
     target = target_id(search.url)
     pairs = _collect(blobs, sources, target)
@@ -183,6 +197,7 @@ def parse_trivago(blobs: list[Any], sources: list[dict[str, str]], html: str, se
             free_cancellation=free, taxes_included=True, source_url=search.url, scraped_at=now,
         ))
 
+    _warn_missing_advertisers(html, offers)
     if unknown:
         log.warning("trivago: anlamı bilinmeyen etiket kodları %s — pansiyon/iptal bunlara göre belirlenemedi; "
                     "'inspect --deal-rows' ile karşılaştırıp trivago_parse.py'ye ekleyin",

@@ -26,6 +26,26 @@ log = logging.getLogger(__name__)
 _NO_AVAILABILITY = re.compile(r"no availability|not available|sold out|müsait değil|uygun oda yok|keine verfügbarkeit", re.I)
 
 
+DEAL_ROWS = '[data-testid="all-slideout-deals"] [data-testid="deal-list-item"]'
+
+
+def wait_until_list_settles(page, selector: str, quiet_s: int = 3, max_s: int = 25) -> int:
+    """Liste öğesi sayısı `quiet_s` saniye değişmeyene (ya da `max_s` dolana) kadar bekler ve son sayıyı döndürür.
+    Trivago acente fiyatlarını parça parça (poll) getirdiği için sabit bir bekleme yavaş acentaları kaçırır."""
+    last, stable = -1, 0
+    for _ in range(max_s):
+        try:
+            n = page.locator(selector).count()
+        except Exception:
+            n = 0
+        stable = stable + 1 if (n and n == last) else 0
+        if stable >= quiet_s:
+            return n
+        last = n
+        page.wait_for_timeout(1_000)
+    return max(last, 0)
+
+
 class ScanAdapter(BrowserAdapter):
     experimental = True
     mode = "advertiser"           # 'advertiser' (metasearch) | 'room' (tek satıcılı OTA)
@@ -131,7 +151,8 @@ class TrivagoAdapter(ScanAdapter):
             except Exception:  # üstte bir katman (çerez bandı vb.) tıklamayı engelliyor olabilir
                 button.dispatch_event("click")
             page.wait_for_selector('[data-testid="all-slideout-deals"]', timeout=15_000)
-            page.wait_for_timeout(1_500)
+            count = wait_until_list_settles(page, DEAL_ROWS)
+            log.info("trivago: fiyat paneli yüklendi (%d acente satırı)", count)
         except Exception as exc:
             log.warning("trivago: fiyat paneli açılamadı: %s", exc)
 

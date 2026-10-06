@@ -169,3 +169,31 @@ def test_deal_without_meal_code_stays_unknown():
     blob = {"data": {"getAccommodationDeals": {"deals": [deal(3008, "Oda", 93293, 15549, 28198, [(412, 1)], "n1")]}}}
     offers = parse_trivago([*ADV, blob], [{}] * len(ADV) + [{"post": POST}], HTML, search())
     assert [o.board for o in offers] == ["UNKNOWN"]       # default_board yalnız bu durumda devreye girer
+
+
+def test_warns_about_advertisers_visible_on_page_but_missing_from_json(caplog):
+    html = ('<ul data-testid="all-slideout-deals">'
+            '<li data-testid="deal-list-item"><span data-testid="advertiser-name">Setur</span></li>'
+            '<li data-testid="deal-list-item"><span data-testid="advertiser-name">Hotels.com</span></li></ul>')
+    with caplog.at_level(logging.WARNING):
+        parse_trivago([*ADV, DEALS], [{}] * len(ADV) + [{"post": POST}], html, search())
+    assert "Hotels.com" in caplog.text and "Setur" not in caplog.text.split("okunan tekliflerde yok:")[1]
+
+
+def test_wait_until_list_settles_waits_for_slow_items():
+    from otascrape.adapters.scan_channels import wait_until_list_settles
+    playwright = pytest.importorskip("playwright.sync_api")
+    pw = playwright.sync_playwright().start()
+    try:
+        try:
+            browser = pw.chromium.launch(headless=True, executable_path=os.environ.get("OTASCRAPE_CHROMIUM") or None)
+        except Exception as exc:
+            pytest.skip(f"Chromium yok: {exc}")
+        page = browser.new_page()
+        page.set_content("""<ul id="l"></ul><script>let i=0;const t=setInterval(()=>{
+            document.getElementById('l').insertAdjacentHTML('beforeend','<li>x</li>'); if(++i>=5) clearInterval(t);}, 900);</script>""")
+        # Liste 4.5 sn boyunca büyüyor; 2 sn sabit kalınca bitmiş sayılır -> 5 öğe görülmeli
+        assert wait_until_list_settles(page, "#l li", quiet_s=2, max_s=15) == 5
+        browser.close()
+    finally:
+        pw.stop()

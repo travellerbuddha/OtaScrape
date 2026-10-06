@@ -59,7 +59,11 @@ def run_scrape(config: Config, conn, mock: bool = False, sleep=time.sleep, today
             try:
                 offers = registry.get(search.channel).fetch(search)
                 apply_default_board(offers, search)
+                before = len(offers)
                 offers = filter_rooms(offers, search)
+                if len(offers) != before:
+                    log.info("%s: %d teklif oda filtresi (room_include/room_exclude) nedeniyle elendi, %d kaldı",
+                             label, before - len(offers), len(offers))
                 db.save_offers(conn, run_id, offers)
                 log.info("%s -> %d teklif", label, len(offers))
             except Exception as exc:
