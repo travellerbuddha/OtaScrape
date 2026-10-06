@@ -1,0 +1,101 @@
+import json
+
+from otascrape.cli import main
+
+
+def test_inspect_summarizes_capture(tmp_path, capsys):
+    stem = tmp_path / "probe_x"
+    body = {"data": {"accommodations": [{"deals": [{"advertiser": {"name": "Booking.com"}, "price": {"amount": 3450, "currency": "TRY"}},
+                                                    {"advertiser": {"name": "Expedia"}, "price": {"amount": 3980, "currency": "TRY"}}]}]}}
+    stem.with_suffix(".json").write_text(json.dumps([
+        {"source": {"url": "https://x/graphql", "method": "POST", "post": '{"operationName":"AccommodationSearch"}'}, "body": body},
+        {"source": {}, "body": {"unrelated": 1}}]))
+    stem.with_suffix(".html").write_text('<html><script id="s1">var a={"advertiser":"x","price":1}</script><p>Fiyat ₺ 3.450</p></html>')
+    assert main(["inspect", str(stem.with_suffix(".json"))]) == 0
+    out = capsys.readouterr().out
+    assert "op=AccommodationSearch" in out
+    assert "data.accommodations[].deals[].price.amount  x2  örn: 3450 | 3980" in out
+    assert "data.accommodations[].deals[].advertiser.name  x2" in out and "Booking.com" in out
+    assert "<script id=s1" in out and "₺ 3.450" in out
+
+
+def test_inspect_old_json_format(tmp_path, capsys):
+    stem = tmp_path / "old"
+    stem.with_suffix(".json").write_text(json.dumps([{"deal": {"price": 5}}]))
+    assert main(["inspect", str(stem)]) == 0
+    assert "deal.price" in capsys.readouterr().out
+
+
+def test_inspect_dom_diagnostics(tmp_path, capsys):
+    stem = tmp_path / "d"
+    stem.with_suffix(".json").write_text("[]")
+    stem.with_suffix(".html").write_text(
+        '<html><title>Hotel X</title><h1>Hotel X</h1><body><div data-testid="deal-list"><section data-testid="deal-row">'
+        '<span data-testid="advertiser-name">Booking.com</span><span>₺15,549</span><span>₺93,293 total</span></section></div>'
+        '<p>21 Oct - 28 Oct</p></body></html>')
+    assert main(["inspect", str(stem)]) == 0
+    out = capsys.readouterr().out
+    assert "h1: Hotel X" in out and "21 Oct - 28 Oct" in out
+    assert "deal-rowx1" in out and "advertiser-namex1" in out
+    assert "span < section[deal-row] < div[deal-list]" in out and "Booking.com | ₺15,549 | ₺93,293 total" in out
+
+
+def test_inspect_block_skeleton(tmp_path, capsys):
+    stem = tmp_path / "b"
+    deals = {"data": {"accommodationDeals": {"accommodationId": 151839, "deals": [
+        {"advertiser": {"id": 395, "name": "Agoda"}, "pricePerStayObject": {"amount": 82268, "eurocents": 149000}},
+        {"advertiser": {"id": 7, "name": "Hotel Site"}, "pricePerStayObject": {"amount": 93293, "eurocents": 170000}},
+        {"advertiser": {"id": 9, "name": "Expedia"}}]}}}
+    stem.with_suffix(".json").write_text(json.dumps([
+        {"source": {"url": "x", "method": "POST", "post": '{"operationName":"other"}'}, "body": {"a": 1}},
+        {"source": {"url": "https://t/graphql?accommodationDealsQuery", "method": "POST",
+                    "post": '{"variables":{"dateRange":"2026-10-12/2026-10-18"}}'}, "body": deals}]))
+    assert main(["inspect", str(stem), "--block", "1", "--block", "9"]) == 0
+    out = capsys.readouterr().out
+    assert "accommodationDealsQuery" in out and '"dateRange":"2026-10-12/2026-10-18"' in out
+    assert '"name": "Agoda"' in out and '"name": "Hotel Site"' in out
+    assert "…(+1 öğe daha)" in out and "böyle bir blok yok" in out
+
+
+def test_inspect_deal_rows_and_requests(tmp_path, capsys):
+    stem = tmp_path / "r"
+    row = ('<div data-testid="slideout-deal"><div data-testid="deal-row"><span data-testid="advertiser-name">Agoda</span>'
+           '<div data-testid="recommended-price"><span>₺13,711</span></div><p data-testid="price-per-stay">₺82,268 total</p>'
+           '<span data-testid="rate-attribute">Free cancellation</span><p>Delüks Oda</p></div></div>')
+    stem.with_suffix(".html").write_text(f"<html><body>{row}<div data-testid='list'>"
+                                         f"<div><span data-testid='advertiser-name'>A</span></div>"
+                                         f"<div><span data-testid='advertiser-name'>B</span></div></div></body></html>")
+    stem.with_suffix(".json").write_text(json.dumps([
+        {"source": {"url": "https://t/graphql?accommodationDealsQuery", "method": "POST", "post": '{"variables":{"currency":"TRY"}}'}, "body": {}},
+        {"source": {"url": "https://t/graphql?LogUserAction", "method": "POST", "post": "x"}, "body": {}}]))
+    assert main(["inspect", str(stem), "--deal-rows"]) == 0
+    out = capsys.readouterr().out
+    assert "slideout içinde: True" in out
+    assert "advertiser-name: Agoda" in out and "price-per-stay: ₺82,268 total" in out and "rate-attribute: Free cancellation" in out
+    assert "p: Delüks Oda" in out
+    assert main(["inspect", str(stem), "--requests"]) == 0
+    out = capsys.readouterr().out
+    assert '[0] accommodationDealsQuery: {"variables":{"currency":"TRY"}}' in out and "LogUserAction" not in out
+
+
+def test_inspect_codes_correlates_labels(tmp_path, capsys):
+    stem = tmp_path / "c"
+    def deal(adv, amount, codes):
+        return {"advertiserDetails": {"nsid": {"id": adv}}, "allInPricePerStay": {"amount": amount},
+                "enrichedPriceAttributesTranslated": [{"nsid": {"ns": ns, "id": i}} for ns, i in codes]}
+    body = {"data": {"getAccommodationDeals": {"deals": [deal(3008, 93293, [(411, 5), (412, 1)]), deal(395, 82268, [(411, 5), (412, 2)]),
+                                                         deal(700, 50000, [(411, 1), (412, 2)])]}}}
+    stem.with_suffix(".json").write_text(json.dumps([{"source": {}, "body": body}]))
+    def li(adv, total, labels):
+        attrs = "".join(f'<span data-testid="rate-attribute">{l}</span>' for l in labels)
+        return (f'<li data-testid="deal-list-item"><div data-testid="advertiser-details-{adv}"></div>'
+                f'{attrs}<p data-testid="price-per-stay">₺{total} total</p></li>')
+    stem.with_suffix(".html").write_text("<html><body>" + li(3008, "93,293", ["Free cancellation", "All-inclusive"]) +
+                                         li(395, "82,268", ["All-inclusive"]) + li(700, "50,000", ["Breakfast included"]) +
+                                         li(1, "1,000", ["x"]) + "</body></html>")
+    assert main(["inspect", str(stem), "--codes"]) == 0
+    out = capsys.readouterr().out
+    assert "3 teklif eşleşti (sayfada 4 acente satırı, JSON'da 3 teklif)" in out
+    assert "'Free cancellation' (n=1): 411:5 x1, 412:1 x1" in out
+    assert "411:1 (n=1): 'Breakfast included' x1" in out
+    assert "412:2 (n=2): 'All-inclusive' x1, 'Breakfast included' x1" in out

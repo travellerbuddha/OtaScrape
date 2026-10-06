@@ -1,0 +1,76 @@
+# Kopyalayın: cp config.example.yaml config.yaml  — sonra kendi otellerinizle düzenleyin.
+# NOT: Aşağıdaki URL'ler örnektir; her otelin gerçek kanal sayfasını kendiniz doğrulayıp yapıştırın.
+
+base_currency: EUR          # Tüm fiyatlar raporda bu para birimine çevrilir
+search_currency: EUR        # Kanallardan istenecek para birimi
+fx:                         # 1 birim X = kaç base_currency. Farklı para birimi görürseniz ekleyin.
+  EUR: 1.0
+  USD: 0.92
+  TRY: 0.022
+
+pax_basis: adults           # Kişi başı hesap: 'adults' (yalnız yetişkin) | 'all_guests' (yetişkin+çocuk)
+parity_tolerance_pct: 1.0   # Direkt fiyatın bu yüzdeden fazla altındaki acenta = parite ihlali
+only_free_cancellation: false   # true: yalnız ücretsiz iptalli teklifler karşılaştırılır
+compare_by_cancellation: true   # true: iadeli ile iadesiz teklifler ayrı gruplarda kıyaslanır (önerilir)
+
+# Satıcı adında bu ifadelerden biri geçiyorsa "direkt kanal" sayılır (küçük harf, içerir mantığı).
+direct_sellers: ["official site", "hotel site", "swandor", "mardan"]   # Trivago'da otelin kendi sitesi "Hotel Site" olarak görünür
+
+database: data/otascrape.db
+output_dir: data/reports
+
+scraper:
+  headless: true
+  delay_seconds: [5, 12]    # İstekler arası rastgele bekleme
+  retries: 2
+  timeout_seconds: 45
+  # proxy_server: "http://proxy.example.com:8000"   # Booking için residential proxy önerilir
+  # proxy_username_env: OTA_PROXY_USER              # Kullanıcı/şifre ortam değişkeninden okunur
+  # proxy_password_env: OTA_PROXY_PASS
+
+# Konaklama şekilleri. adults/children = tüm odalardaki toplam kişi.
+stays:
+  - {name: "7N-2AD", nights: 7, adults: 2}
+  - {name: "7N-2AD-1CH", nights: 7, adults: 2, children: 1, child_ages: [7]}
+  - {name: "3N-2AD", nights: 3, adults: 2}
+
+# Giriş tarihleri: bugünden itibaren gün kaydırmaları ve/veya sabit tarihler.
+checkin:
+  offsets_days: [14, 30, 60]
+  dates: []                 # ör. ["2026-12-31"]
+
+# Kanal ayarları (her kanal için isteğe bağlı):
+#   url          : Otelin o kanaldaki sayfası. {check_in} {check_out} {check_out:%d.%m.%Y} {nights} {adults}
+#                  {children} {child_ages} {rooms} {currency} yer tutucuları kullanılabilir (aşağıya bakın).
+#   price_basis  : total | per_night — sayfadaki fiyat tüm konaklama mı, gecelik mi? Metasearch kanallarında
+#                  fiyat alanı belirsizse ZORUNLU (yoksa arama hata verir; yanlış varsayım yapılmaz).
+#   default_board: Pansiyon tipi okunamayan tekliflere atanır (RO/BB/HB/FB/AI/UAI). Her şey dahil oteller için AI.
+#   currency     : Sayfa para birimini belirtmiyorsa varsayılan.
+hotels:
+  - id: mardan-palace
+    name: Mardan Palace
+    own: true
+    channels:
+      booking: {url: "https://www.booking.com/hotel/tr/mardan-palace.html"}
+      # Trivago: otel sayfasını açıp tam URL'yi yapıştırın (search=100-XXXXX ve sondaki #::hasInteracted=true kalsın).
+      # Tarih/kişi otomatik eklenir, tüm acenta fiyatları için "Show all prices" paneli açılır.
+      trivago:
+        url: "https://www.trivago.com.tr/en-US/lm/ORNEK-OTEL-SLUG?search=100-12345#::hasInteracted=true"
+        default_board: AI              # pansiyon etiketi okunamayan teklifler için (her şey dahil oteller)
+        # room_include: "deluxe|delüks"   # farklı oda tiplerini kıyaslamamak için (regex, büyük/küçük harf duyarsız)
+        # room_exclude: "suit|villa"
+      # Trip.com: otel detay sayfasının tam URL'si (hotelId zorunlu).
+      # tripcom: {url: "https://www.trip.com/hotels/detail/?cityId=XXX&hotelId=YYYY", price_basis: total}
+      # Check24 / TripAdvisor / Expedia: yerleşik URL oluşturucu yok. Sitede aranızı yapın, URL'yi kopyalayın,
+      # tarih ve kişileri yer tutucularla değiştirin:
+      # check24: {url: "https://hotel.check24.de/...?checkin={check_in}&checkout={check_out}&adults={adults}", price_basis: total}
+    # Kanallardaki farklı oda adlarını tek oda tipine eşler; eşleşmeyen teklifler kıyaslanmaz (Ham Teklifler'de durur).
+    # Tanımlamazsanız her satıcının EN UCUZ odası kıyaslanır ve farklı oda tipleri karışır. Regex, büyük/küçük harf duyarsız;
+    # YAML'da tek tırnak kullanın (ters eğik çizgiyi iki katlamak gerekmez).
+    # room_types:
+    #   Deluxe: ['^deluxe (room|oda)\b', '^delüks oda']
+    #   Deluxe Superior: ['^deluxe superior (room|oda)\b']
+  - id: rakip-ornek
+    name: Rakip Otel (örnek)
+    channels:
+      booking: {url: "https://www.booking.com/hotel/tr/example-hotel.html"}
