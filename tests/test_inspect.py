@@ -38,3 +38,20 @@ def test_inspect_dom_diagnostics(tmp_path, capsys):
     assert "h1: Hotel X" in out and "21 Oct - 28 Oct" in out
     assert "deal-rowx1" in out and "advertiser-namex1" in out
     assert "span < section[deal-row] < div[deal-list]" in out and "Booking.com | ₺15,549 | ₺93,293 total" in out
+
+
+def test_inspect_block_skeleton(tmp_path, capsys):
+    stem = tmp_path / "b"
+    deals = {"data": {"accommodationDeals": {"accommodationId": 151839, "deals": [
+        {"advertiser": {"id": 395, "name": "Agoda"}, "pricePerStayObject": {"amount": 82268, "eurocents": 149000}},
+        {"advertiser": {"id": 7, "name": "Hotel Site"}, "pricePerStayObject": {"amount": 93293, "eurocents": 170000}},
+        {"advertiser": {"id": 9, "name": "Expedia"}}]}}}
+    stem.with_suffix(".json").write_text(json.dumps([
+        {"source": {"url": "x", "method": "POST", "post": '{"operationName":"other"}'}, "body": {"a": 1}},
+        {"source": {"url": "https://t/graphql?accommodationDealsQuery", "method": "POST",
+                    "post": '{"variables":{"dateRange":"2026-10-12/2026-10-18"}}'}, "body": deals}]))
+    assert main(["inspect", str(stem), "--block", "1", "--block", "9"]) == 0
+    out = capsys.readouterr().out
+    assert "accommodationDealsQuery" in out and '"dateRange":"2026-10-12/2026-10-18"' in out
+    assert '"name": "Agoda"' in out and '"name": "Hotel Site"' in out
+    assert "…(+1 öğe daha)" in out and "böyle bir blok yok" in out

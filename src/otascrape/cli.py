@@ -90,12 +90,13 @@ def main(argv: list[str] | None = None) -> int:
     probe.add_argument("--headed", action="store_true", help="tarayıcı penceresini göster (bot engelini azaltabilir)")
     insp = sub.add_parser("inspect", help="probe yakalamasını kısa bir özete çevir (yapıştırıp paylaşmak için)")
     insp.add_argument("file", help="probe dosyası (.json/.html) veya uzantısız dosya adı")
+    insp.add_argument("--block", type=int, action="append", help="yalnızca bu JSON bloğunun yapısını göster (birden çok kez verilebilir)")
     args = parser.parse_args(argv)
 
     if args.cmd == "inspect":
         from .inspect_capture import summarize
 
-        print("\n".join(summarize(Path(args.file).with_suffix(""))))
+        print("\n".join(summarize(Path(args.file).with_suffix(""), blocks=args.block)))
         return 0
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

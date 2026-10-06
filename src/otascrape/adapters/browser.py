@@ -134,7 +134,7 @@ class BrowserAdapter(Adapter):
                     body = r.json()
                     blobs.append(body)
                     sources.append({"url": r.url[:300], "method": r.request.method,
-                                    "post": (r.request.post_data or "")[:300]})
+                                    "post": (r.request.post_data or "")[:2000]})
                 except Exception:  # gövde artık okunamıyor olabilir
                     continue
             html = page.content()

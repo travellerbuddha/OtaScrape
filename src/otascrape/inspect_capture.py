@@ -77,9 +77,47 @@ def _dom_diagnostics(soup: BeautifulSoup) -> list[str]:
     return out
 
 
-def summarize(stem: Path, max_lines: int = 160) -> list[str]:
+def _prune(node: Any, depth: int = 0) -> Any:
+    """Yapıyı korurken boyutu küçültür: listelerin ilk 2 öğesi, kısaltılmış metinler."""
+    if depth > 16:
+        return "…"
+    if isinstance(node, dict):
+        return {k: _prune(v, depth + 1) for k, v in node.items()}
+    if isinstance(node, list):
+        out = [_prune(x, depth + 1) for x in node[:2]]
+        if len(node) > 2:
+            out.append(f"…(+{len(node) - 2} öğe daha)")
+        return out
+    if isinstance(node, str):
+        return node if len(node) <= 50 else node[:50] + "…"
+    return node
+
+
+def block_skeleton(records: list[dict], index: int, limit: int = 7000) -> list[str]:
+    if not 0 <= index < len(records):
+        return [f"[{index}] böyle bir blok yok (0-{len(records) - 1})"]
+    rec = records[index]
+    src = rec["source"]
+    head = f"=== blok [{index}] {src.get('method', '')} {src.get('url', '?')[:120]}"
+    text = json.dumps(_prune(rec["body"]), ensure_ascii=False, indent=1)
+    lines = [head, f"istek gövdesi: {src.get('post', '')[:300]}", "yapı (listelerin ilk 2 öğesi):"]
+    lines.extend(text[:limit].split("\n"))
+    if len(text) > limit:
+        lines.append("…(kesildi)")
+    return lines
+
+
+def summarize(stem: Path, max_lines: int = 160, blocks: list[int] | None = None) -> list[str]:
     json_path, html_path = stem.with_suffix(".json"), stem.with_suffix(".html")
     lines: list[str] = []
+
+    if blocks:
+        raw = json.loads(json_path.read_text(encoding="utf-8"))
+        records = [r if isinstance(r, dict) and "body" in r else {"source": {}, "body": r} for r in raw]
+        for index in blocks:
+            lines.extend(block_skeleton(records, index))
+            lines.append("")
+        return lines
 
     if json_path.exists():
         raw = json.loads(json_path.read_text(encoding="utf-8"))
@@ -108,7 +146,7 @@ def summarize(stem: Path, max_lines: int = 160) -> list[str]:
             for path, values in paths.items():
                 found.append((bool(_STRONG.search(".".join(path.split(".")[-2:]))), i, path, values))
         found.sort(key=lambda t: (not t[0], t[1]))
-        for strong, i, path, values in found[:70]:
+        for strong, i, path, values in found[:110]:
             samples = " | ".join(dict.fromkeys(_short(v) for v in values[:6]))
             lines.append(f"[{i}] {path}  x{len(values)}  örn: {samples}")
         if not found:
