@@ -7,8 +7,23 @@ Seçtiğiniz otellerin fiyatlarını OTA ve metasearch kanallarında (Booking, E
 | Parça | Durum |
 |---|---|
 | Yapılandırma, DB, hesaplama, karşılaştırma, Excel/HTML rapor, CLI | Hazır, testli |
-| Booking adaptörü (Playwright) | Yazıldı; ayrıştırma sentetik HTML ile test edildi. **Canlı sayfada seçiciler henüz doğrulanmadı** (geliştirme ortamında Booking AWS WAF doğrulaması döndürdü; residential proxy gerekir) |
-| Expedia, Trip.com, Trivago, Check24, TripAdvisor | Adaptör yok; config'te tanımlanabilir, çalıştırmada "henüz yazılmadı" hatası olarak loglanır |
+| Ortak tarayıcı katmanı (engel tespiti, retry, HTML dökümü, `probe`) | Hazır; gerçek ağda Booking, Trivago, Trip.com ile denendi |
+| **Booking** | Yazıldı; ayrıştırma sentetik HTML ile test edildi. **Gerçek fiyat tablosu görülemedi** (aşağıya bakın) |
+| **Trivago** | URL oluşturucu kaynaklı biçime göre yazıldı; JSON ayrıştırma sezgisel. **Deneysel**: geliştirme ortamından HTTP 403 verdi, gerçek yanıt hiç görülmedi |
+| **Trip.com** | URL oluşturucu kaynaklı biçime göre yazıldı. Sayfa açılıyor (200) ama oda fiyatları ilk yüklemede yok; fiyat verisinin nereden geldiği doğrulanmadı. **Deneysel** |
+| **Check24, TripAdvisor, Expedia** | Yalnızca URL şablonu + sezgisel JSON ayrıştırma. Hiç denenmedi. **Deneysel** |
+
+"Deneysel" kanallar çalıştırmada uyarı loglar. Sonuçlarına güvenmeden önce `otascrape probe` ile bir yakalama alıp kontrol edin.
+
+### Geliştirme ortamında gözlenenler (kendi ağınızda farklı olabilir)
+- **Booking**, WAF doğrulamasını headless Chromium'da kendiliğinden geçiyor ama parametreli URL'yi (`?checkin=…`) 301 ile parametresiz adrese yönlendiriyor; sayfa "Select dates to see availability" diyor ve fiyat tablosu gelmiyor. Adaptör bu durumu artık "tarih parametrelerini uygulamadı" hatası olarak bildirir (önceden yanlışlıkla "engellendi" diyordu). Kendi ağınızda/proxy'nizle aynı şey oluyorsa çözüm, tarihleri sayfadaki arama formundan seçtirmektir (henüz yazılmadı).
+- **Trivago** bu ortamdan 403 "Access Denied" döndürdü; residential proxy gerekebilir.
+
+## Pratik akış (yeni bir kanal/otel ekleme)
+1. `config.yaml`'a otel + kanal URL'sini ekleyin.
+2. `otascrape probe --hotel <id> --channel <kanal>`: sayfayı bir kez açar, `data/debug/probe_*.html/.json` dosyalarını kaydeder, kaç teklif ayrıştırabildiğini yazar.
+3. Teklif sayısı 0 veya hata ise yakalanan dosyaları inceleyip ayrıştırmayı düzeltin; fiyat alanı belirsizse `price_basis` ekleyin.
+4. Sonra `otascrape run`.
 
 ## Kurulum
 
@@ -25,6 +40,7 @@ cp config.example.yaml config.yaml   # otellerinizi, konaklama şekillerini, dir
 otascrape run --mock      # siteye gitmeden sahte veriyle uçtan uca deneme
 otascrape run             # gerçek tarama + rapor
 otascrape report          # son taramadan yeniden rapor
+otascrape probe --hotel mardan-palace --channel trivago   # tek aramayı yakala ve ayrıştırmayı dene
 pytest                    # testler
 ```
 
@@ -46,6 +62,8 @@ Zamanlama (günlük 06:00):
 - `only_free_cancellation: true` ile yalnız ücretsiz iptalli teklifler kıyaslanır.
 
 ## Yeni kanal eklemek
+
+Playwright kullanan kanallar için `adapters/browser.py` içindeki `BrowserAdapter`'ı (veya JSON tabanlı kanallar için `scan_channels.ScanAdapter`'ı) türetin; `build_url` ve `parse` yazmanız yeterli. Genel olarak:
 
 1. `src/otascrape/adapters/<kanal>.py` içinde `Adapter`'ı türetin; `fetch(search)` aynı formatta `Offer` listesi döndürsün. Metasearch'te her acenta ayrı `Offer`, `seller` alanı acentanın adı olmalı. Müsaitlik yoksa `[]`, bot engeli için `BlockedError`, beklenmeyen yapı için `ScrapeError` fırlatın.
 2. `adapters/__init__.py` içindeki `_FACTORIES` sözlüğüne ekleyin.

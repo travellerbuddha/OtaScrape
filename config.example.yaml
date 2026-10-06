@@ -38,14 +38,29 @@ checkin:
   offsets_days: [14, 30, 60]
   dates: []                 # ör. ["2026-12-31"]
 
+# Kanal ayarları (her kanal için isteğe bağlı):
+#   url          : Otelin o kanaldaki sayfası. {check_in} {check_out} {check_out:%d.%m.%Y} {nights} {adults}
+#                  {children} {child_ages} {rooms} {currency} yer tutucuları kullanılabilir (aşağıya bakın).
+#   price_basis  : total | per_night — sayfadaki fiyat tüm konaklama mı, gecelik mi? Metasearch kanallarında
+#                  fiyat alanı belirsizse ZORUNLU (yoksa arama hata verir; yanlış varsayım yapılmaz).
+#   default_board: Pansiyon tipi okunamayan tekliflere atanır (RO/BB/HB/FB/AI/UAI). Her şey dahil oteller için AI.
+#   currency     : Sayfa para birimini belirtmiyorsa varsayılan.
 hotels:
   - id: mardan-palace
     name: Mardan Palace
     own: true
     channels:
       booking: {url: "https://www.booking.com/hotel/tr/mardan-palace.html"}
-      # expedia: {url: "..."}      # adaptör henüz yok
-      # trivago: {url: "..."}
+      # Trivago: otel sayfasını açın, URL'deki search=100-XXXXX kısmı yeterli; tarih/kişi otomatik eklenir.
+      trivago:
+        url: "https://www.trivago.com/en-US/oar/ORNEK-OTEL?search=100-12345"
+        price_basis: per_night
+        default_board: AI
+      # Trip.com: otel detay sayfasının tam URL'si (hotelId zorunlu).
+      # tripcom: {url: "https://www.trip.com/hotels/detail/?cityId=XXX&hotelId=YYYY", price_basis: total}
+      # Check24 / TripAdvisor / Expedia: yerleşik URL oluşturucu yok. Sitede aranızı yapın, URL'yi kopyalayın,
+      # tarih ve kişileri yer tutucularla değiştirin:
+      # check24: {url: "https://hotel.check24.de/...?checkin={check_in}&checkout={check_out}&adults={adults}", price_basis: total}
   - id: rakip-ornek
     name: Rakip Otel (örnek)
     channels:

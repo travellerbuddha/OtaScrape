@@ -17,6 +17,7 @@ class ConfigError(ValueError):
 @dataclass
 class ChannelConfig:
     url: str
+    options: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -95,7 +96,10 @@ def _parse_hotel(raw: dict[str, Any]) -> HotelConfig:
         url = value if isinstance(value, str) else (value or {}).get("url")
         if not url:
             raise ConfigError(f"{where}.channels.{channel}: 'url' zorunlu")
-        channels[str(channel).lower()] = ChannelConfig(url=url)
+        options = {} if isinstance(value, str) else {k: v for k, v in value.items() if k != "url"}
+        if options.get("price_basis") not in (None, "total", "per_night"):
+            raise ConfigError(f"{where}.channels.{channel}: price_basis 'total' veya 'per_night' olmalı")
+        channels[str(channel).lower()] = ChannelConfig(url=url, options=options)
     return HotelConfig(id=hid, name=str(raw.get("name", hid)), own=bool(raw.get("own", False)), channels=channels)
 
 
@@ -176,6 +180,7 @@ def build_searches(config: Config, today: date) -> list[Search]:
                             check_in=check_in,
                             stay=stay,
                             currency=config.search_currency,
+                            options=ch.options,
                         )
                     )
     return searches

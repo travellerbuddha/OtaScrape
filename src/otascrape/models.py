@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 
@@ -27,6 +27,7 @@ class Search:
     check_in: date
     stay: Stay
     currency: str
+    options: dict = field(default_factory=dict, compare=False, hash=False)
 
     @property
     def check_out(self) -> date:

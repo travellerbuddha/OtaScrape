@@ -27,6 +27,34 @@ def _make_reports(cfg, conn, run_id: int, out_dir: Path) -> tuple[Path, Path, in
     return xlsx, html, breaches
 
 
+def _probe(cfg, args) -> int:
+    from datetime import date
+
+    from .adapters import AdapterRegistry
+    from .config import build_searches
+
+    searches = [x for x in build_searches(cfg, date.today()) if x.hotel_id == args.hotel and x.channel == args.channel]
+    if args.stay:
+        searches = [x for x in searches if x.stay.name == args.stay]
+    if args.check_in:
+        searches = [x for x in searches if x.check_in.isoformat() == args.check_in]
+    if not searches:
+        print("Eşleşen otel/kanal/konaklama/tarih bulunamadı (config'i kontrol edin).", file=sys.stderr)
+        return 2
+    registry = AdapterRegistry(cfg.scraper)
+    try:
+        adapter = registry.get(args.channel)
+        if not hasattr(adapter, "probe"):
+            print(f"'{args.channel}' adaptörü probe desteklemiyor.", file=sys.stderr)
+            return 2
+        summary = adapter.probe(searches[0], Path(cfg.scraper.debug_dir))
+    finally:
+        registry.close()
+    for key, value in summary.items():
+        print(f"{key}: {value}")
+    return 1 if "error" in summary else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="otascrape", description="OTA fiyat takip ve karşılaştırma")
     parser.add_argument("-c", "--config", default="config.yaml", help="YAML yapılandırma dosyası")
@@ -37,6 +65,11 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--no-report", action="store_true")
     rep = sub.add_parser("report", help="mevcut bir taramadan rapor üret")
     rep.add_argument("--run-id", type=int, help="varsayılan: son tamamlanan tarama")
+    probe = sub.add_parser("probe", help="tek bir aramayı yakala: HTML + JSON'u kaydet, ayrıştırmayı dene")
+    probe.add_argument("--hotel", required=True, help="config'teki otel id")
+    probe.add_argument("--channel", required=True)
+    probe.add_argument("--stay", help="konaklama adı (varsayılan: ilk)")
+    probe.add_argument("--check-in", help="YYYY-MM-DD (varsayılan: ilk giriş tarihi)")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -45,6 +78,9 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ConfigError) as exc:
         print(f"Yapılandırma hatası: {exc}", file=sys.stderr)
         return 2
+
+    if args.cmd == "probe":
+        return _probe(cfg, args)
 
     conn = db.connect(cfg.database)
     out_dir = Path(cfg.output_dir)

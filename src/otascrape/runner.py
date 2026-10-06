@@ -12,6 +12,16 @@ from .config import Config, build_searches
 log = logging.getLogger(__name__)
 
 
+def apply_default_board(offers, search) -> None:
+    """Pansiyon tipi okunamayan teklifler için kanal ayarındaki `default_board` değerini uygular
+    (ör. her şey dahil oteller için 'AI'); yoksa 'UNKNOWN' kalır ve ayrı grupta karşılaştırılır."""
+    default = search.options.get("default_board")
+    if default:
+        for offer in offers:
+            if offer.board == "UNKNOWN":
+                offer.board = str(default).upper()
+
+
 def run_scrape(config: Config, conn, mock: bool = False, sleep=time.sleep, today: date | None = None) -> int:
     """Tüm aramaları çalıştırır, sonuçları DB'ye yazar ve run_id döndürür.
 
@@ -33,6 +43,7 @@ def run_scrape(config: Config, conn, mock: bool = False, sleep=time.sleep, today
                 continue
             try:
                 offers = registry.get(search.channel).fetch(search)
+                apply_default_board(offers, search)
                 db.save_offers(conn, run_id, offers)
                 log.info("%s -> %d teklif", label, len(offers))
             except Exception as exc:

@@ -68,15 +68,29 @@ def test_mock_end_to_end(tmp_path, monkeypatch):
     assert db.latest_run_id(conn) == 2 and db.latest_run_id(conn, before=2) == 1
 
 
-def test_unimplemented_channel_is_logged_not_fatal(tmp_path):
+def test_unknown_channel_is_logged_not_fatal(tmp_path):
     import yaml
     p = tmp_path / "c.yaml"
     p.write_text(yaml.safe_dump({
         "database": str(tmp_path / "t.db"), "output_dir": str(tmp_path / "out"),
         "stays": [{"nights": 7, "adults": 2}], "checkin": {"offsets_days": [14]},
-        "hotels": [{"id": "a", "channels": {"expedia": "u"}}],
+        "hotels": [{"id": "a", "channels": {"kayak": "u"}}],
     }))
     assert main(["-c", str(p), "run"]) == 1  # hata var -> çıkış kodu 1
     conn = db.connect(tmp_path / "t.db")
     err = db.load_errors(conn, 1)
-    assert len(err) == 1 and "henüz yazılmadı" in err[0]["message"]
+    assert len(err) == 1 and "Bilinmeyen kanal" in err[0]["message"]
+
+
+def test_booking_real_page_with_waf_script_is_not_blocked(search):
+    # Gerçek yakalamada görüldü: sayfa 1,8 MB, JS içinde 'awswaf' geçiyor, tablo yok.
+    big = "<html><body><p>Mardan Palace</p>" + "<div>x</div>" * 5000 + "<script>var w='awswaf'; var m='sold out';</script></body></html>"
+    with pytest.raises(ScrapeError) as exc:
+        parse_offers(big, search)
+    assert not isinstance(exc.value, BlockedError)
+
+
+def test_booking_dates_not_applied(search):
+    html = "<html><body><div>Select dates to see this property's availability and prices</div></body></html>"
+    with pytest.raises(ScrapeError, match="tarih"):
+        parse_offers(html, search)

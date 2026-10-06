@@ -9,6 +9,10 @@ class ScrapeError(Exception):
     """Sayfa okunamadı / beklenen yapı bulunamadı."""
 
 
+class FatalScrapeError(ScrapeError):
+    """Yapılandırma/desteklenmeyen durum kaynaklı hata: tekrar denemek anlamsız (retry yapılmaz)."""
+
+
 class BlockedError(ScrapeError):
     """Kanal botu engelledi (captcha, WAF, 403...). Proxy/yöntem değişikliği gerekir."""
 
