@@ -9,7 +9,7 @@ Seçtiğiniz otellerin fiyatlarını OTA ve metasearch kanallarında (Booking, E
 | Yapılandırma, DB, hesaplama, karşılaştırma, Excel/HTML rapor, CLI | Hazır, testli |
 | Ortak tarayıcı katmanı (engel tespiti, retry, HTML dökümü, `probe`) | Hazır; gerçek ağda Booking, Trivago, Trip.com ile denendi |
 | **Booking** | Yazıldı; ayrıştırma sentetik HTML ile test edildi. **Gerçek fiyat tablosu görülemedi** (aşağıya bakın) |
-| **Trivago** | Gerçek bir yakalamadaki (Antalya) veri yapısına göre yazıldı: tarih URL'den (`drs-40`), tüm acenta teklifleri sayfanın `accommodationDealsQuery` yanıtından, EUR karşılığı Trivago'nun kendi çevriminden. Ayrıştırma ve tıklama akışı testli; **canlı uçtan uca ilk deneme bekleniyor**. Pansiyon/iptal kodlarından yalnızca 411:5 (her şey dahil) ve 412:1 (ücretsiz iptal) bilinir |
+| **Trivago** | **Gerçek sayfada uçtan uca doğrulandı** (Antalya, tek otel/tarih: `probe` 20 teklif okudu). Tarih URL'den (`drs-40`), tüm acenta teklifleri "Show all prices" panelindeki `accommodationDealsQuery` yanıtından, EUR karşılığı Trivago'nun kendi çevriminden. Pansiyon/iptal kodlarından yalnızca 411:5 (her şey dahil) ve 412:1 (ücretsiz iptal) bilinir; anlamı bilinmeyen pansiyon kodu `T411-x` olarak ayrı grupta kalır (`inspect --codes` ile çözülür) |
 | **Trip.com** | URL oluşturucu kaynaklı biçime göre yazıldı. Sayfa açılıyor (200) ama oda fiyatları ilk yüklemede yok; fiyat verisinin nereden geldiği doğrulanmadı. **Deneysel** |
 | **Check24, TripAdvisor, Expedia** | Yalnızca URL şablonu + sezgisel JSON ayrıştırma. Hiç denenmedi. **Deneysel** |
 
@@ -41,7 +41,8 @@ otascrape run --mock      # siteye gitmeden sahte veriyle uçtan uca deneme
 otascrape run             # gerçek tarama + rapor
 otascrape report          # son taramadan yeniden rapor
 otascrape probe --hotel mardan-palace --channel trivago --url "<otel sayfası URL'si>" --headed   # tek aramayı yakala ve ayrıştırmayı dene
-otascrape inspect data/debug/probe_trivago_<...>.json   # yakalamanın kısa özeti
+otascrape inspect data/debug/probe_trivago_<...>.json   # yakalamanın kısa özeti (--deal-rows, --requests, --block N, --codes)
+otascrape probe --hotel x --channel check24 --raw --manual --url "<sitedeki URL>"   # henüz adaptörü olmayan kanalı olduğu gibi aç, elle arama yap, yakala
 pytest                    # testler
 ```
 

@@ -166,7 +166,12 @@ def parse_trivago(blobs: list[Any], sources: list[dict[str, str]], html: str, se
 
         codes = _codes(deal)
         unknown.update(c for c in codes if c[0] in KNOWN_NAMESPACES and c not in BOARD_CODES and c not in FREE_CANCEL_CODES)
-        board = next((BOARD_CODES[c] for c in codes if c in BOARD_CODES), "UNKNOWN")
+        board = next((BOARD_CODES[c] for c in codes if c in BOARD_CODES), None)
+        if board is None:
+            # Pansiyon kodu var ama anlamı bilinmiyor: 'UNKNOWN' yapılırsa default_board (ör. AI) yanlışlıkla
+            # uygulanır. Ham kodla (T411-1) ayrı grupta kalır ve raporda görünür.
+            meal = next((c for c in codes if c[0] == 411), None)
+            board = f"T{meal[0]}-{meal[1]}" if meal else "UNKNOWN"
         free = True if any(c in FREE_CANCEL_CODES for c in codes) or _dig(deal, "priceDetails", "freeCancellationDeadline") else None
 
         adv_id = _dig(deal, "advertiserDetails", "nsid", "id")

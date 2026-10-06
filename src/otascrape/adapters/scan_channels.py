@@ -90,6 +90,7 @@ class TrivagoAdapter(ScanAdapter):
     paneli açılır ve sayfanın kendi `accommodationDealsQuery` yanıtı okunur (bkz. trivago_parse)."""
 
     channel = "trivago"
+    experimental = False  # gerçek sayfada uçtan uca doğrulandı (Antalya, 20 teklif)
 
     def build_builtin_url(self, search: Search) -> str:
         if search.stay.children or search.stay.rooms != 1:

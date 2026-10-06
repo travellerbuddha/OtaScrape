@@ -147,7 +147,7 @@ def test_default_board():
 def test_registry_warns_experimental(caplog):
     reg = AdapterRegistry(ScraperSettings())
     with caplog.at_level("WARNING"):
-        a = reg.get("trivago")
+        a = reg.get("check24")
     assert a.experimental and "DENEYSEL" in caplog.text
     reg.close()
 
@@ -234,3 +234,26 @@ def test_probe_manual_reports_final_url(tmp_path, monkeypatch, capsys):
     assert seen == {"manual": True, "headless": False}
     out = capsys.readouterr().out
     assert "final_url: " in out and "&elle=secildi" in out
+
+
+def test_probe_raw_url_skips_builder(tmp_path, monkeypatch, capsys):
+    seen = {}
+
+    def fake_fetch_page(self, url):
+        seen["url"] = url
+        return PageCapture(url, 200, "<html>" + "x" * 100 + "</html>", [])
+
+    monkeypatch.setattr(Check24Adapter, "fetch_page", fake_fetch_page)
+    p = tmp_path / "c.yaml"
+    p.write_text(yaml.safe_dump({
+        "database": str(tmp_path / "t.db"), "scraper": {"debug_dir": str(tmp_path / "dbg")},
+        "stays": [{"nights": 7, "adults": 2}], "checkin": {"offsets_days": [10]},
+        "hotels": [{"id": "a", "channels": {"booking": "https://b/x"}}]}))
+    args = ["-c", str(p), "probe", "--hotel", "a", "--channel", "check24", "--url", "https://hotel.check24.de/hotel/x"]
+
+    assert main(args) == 1                                  # şablon yok: traceback değil, açıklayıcı mesaj
+    out = capsys.readouterr().out
+    assert out.startswith("error: check24:") and "yer tutucu" in out and "url" not in seen
+
+    assert main(args + ["--raw"]) == 0                      # --raw: URL olduğu gibi açılır
+    assert seen["url"] == "https://hotel.check24.de/hotel/x"

@@ -177,9 +177,10 @@ class BrowserAdapter(Adapter):
                 time.sleep(random.uniform(*self._s.delay_seconds))
         raise ScrapeError(f"{self._s.retries + 1} denemede başarısız: {last_error}") from last_error
 
-    def probe(self, search: Search, out_dir: Path) -> dict[str, Any]:
-        """Sayfayı bir kez açar, HTML + JSON yanıtlarını diske yazar ve ayrıştırmayı dener."""
-        url = self.build_url(search)
+    def probe(self, search: Search, out_dir: Path, raw_url: bool = False) -> dict[str, Any]:
+        """Sayfayı bir kez açar, HTML + JSON yanıtlarını diske yazar ve ayrıştırmayı dener.
+        `raw_url`: URL'yi şablon/oluşturucu kullanmadan olduğu gibi aç (henüz adaptörü olmayan kanalları keşfetmek için)."""
+        url = search.url if raw_url else self.build_url(search)
         self._current_search = search
         capture = self.fetch_page(url)
         stem = f"probe_{self.channel}_{search.hotel_id}_{search.check_in}_{search.stay.name}"

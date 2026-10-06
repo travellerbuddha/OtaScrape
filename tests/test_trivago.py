@@ -75,7 +75,7 @@ def test_parse_offers_in_eur_via_eurocents():
     assert offers["Agoda"].free_cancellation is None                                    # 412:2 anlamı bilinmiyor -> None
     assert offers["Agoda"].seller == "Agoda"                                            # getAdvertiserDetails, sayfa adından öncelikli
     assert offers["Hotel Site"].total_price == round(41283 / 100 * 6, 2)               # ad yalnızca DOM'da
-    assert offers["Trivago acente #9999"].board == "UNKNOWN" and offers["Trivago acente #9999"].free_cancellation is True
+    assert offers["Trivago acente #9999"].board == "T411-7" and offers["Trivago acente #9999"].free_cancellation is True   # bilinmeyen kod AI'ya karışmaz
 
 
 def test_native_currency_when_search_currency_is_not_eur():
@@ -163,3 +163,9 @@ def test_after_load_clicks_the_right_card_in_a_real_browser():
         browser.close()
     finally:
         pw.stop()
+
+
+def test_deal_without_meal_code_stays_unknown():
+    blob = {"data": {"getAccommodationDeals": {"deals": [deal(3008, "Oda", 93293, 15549, 28198, [(412, 1)], "n1")]}}}
+    offers = parse_trivago([*ADV, blob], [{}] * len(ADV) + [{"post": POST}], HTML, search())
+    assert [o.board for o in offers] == ["UNKNOWN"]       # default_board yalnız bu durumda devreye girer

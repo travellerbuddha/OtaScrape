@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import db
+from .adapters.base import ScrapeError
 from .compare import build_comparisons, price_changes
 from .config import ConfigError, load_config
 from .report import write_excel, write_html
@@ -60,12 +61,15 @@ def _probe(cfg, args) -> int:
             print(f"'{args.channel}' adaptörü probe desteklemiyor.", file=sys.stderr)
             return 2
         adapter.manual_pause = bool(args.manual)
-        summary = adapter.probe(searches[0], Path(cfg.scraper.debug_dir))
+        summary = adapter.probe(searches[0], Path(cfg.scraper.debug_dir), raw_url=args.raw)
+    except ScrapeError as exc:  # örn. URL şablonu/oluşturucu hatası: kullanıcıya traceback yerine mesaj göster
+        print(f"error: {exc}")
+        return 1
     finally:
         registry.close()
     for key, value in summary.items():
         print(f"{key}: {value}")
-    return 1 if "error" in summary else 0
+    return 1 if "error" in summary and not args.raw else 0   # --raw: ayrıştırıcı henüz yok, yakalama yeterli
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,18 +91,20 @@ def main(argv: list[str] | None = None) -> int:
     probe.add_argument("--price-basis", choices=["total", "per_night"], help="sayfadaki fiyat toplam mı gecelik mi")
     probe.add_argument("--manual", action="store_true",
                        help="sayfayı açıp bekler; tarihleri elle seçip Enter'a basınca yakalar ve son adresi yazar (--headed'ı kapsar)")
+    probe.add_argument("--raw", action="store_true", help="URL'yi olduğu gibi aç (yer tutucu/oluşturucu kullanma); yeni kanalları keşfetmek için")
     probe.add_argument("--headed", action="store_true", help="tarayıcı penceresini göster (bot engelini azaltabilir)")
     insp = sub.add_parser("inspect", help="probe yakalamasını kısa bir özete çevir (yapıştırıp paylaşmak için)")
     insp.add_argument("file", help="probe dosyası (.json/.html) veya uzantısız dosya adı")
     insp.add_argument("--block", type=int, action="append", help="yalnızca bu JSON bloğunun yapısını göster (birden çok kez verilebilir)")
     insp.add_argument("--deal-rows", action="store_true", help="sayfadaki acenta satırlarının DOM yapısını göster")
+    insp.add_argument("--codes", action="store_true", help="Trivago etiket kodları (411:5 gibi) ile sayfadaki etiketleri eşleştir")
     insp.add_argument("--requests", action="store_true", help="arama/fırsat/acenta isteklerinin gövdelerini göster")
     args = parser.parse_args(argv)
 
     if args.cmd == "inspect":
         from .inspect_capture import summarize
 
-        print("\n".join(summarize(Path(args.file).with_suffix(""), blocks=args.block, rows=args.deal_rows, requests=args.requests)))
+        print("\n".join(summarize(Path(args.file).with_suffix(""), blocks=args.block, rows=args.deal_rows, requests=args.requests, codes=args.codes)))
         return 0
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

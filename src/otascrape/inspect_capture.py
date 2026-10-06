@@ -157,11 +157,76 @@ def request_bodies(records: list[dict], ops=("accommodationSearchQuery", "accomm
     return out
 
 
+def code_label_table(records: list[dict], soup: BeautifulSoup) -> list[str]:
+    """Trivago teklifindeki sayısal etiket kodlarını, aynı teklifin (acente + toplam fiyat) sayfadaki
+    `rate-attribute` metinleriyle eşleştirir; hangi kodun hangi etikete karşılık geldiğini gösterir."""
+    from .normalize import parse_number
+
+    deals: dict[tuple, list[str]] = {}
+    for rec in records:
+        for d in _dig(rec["body"], "data", "getAccommodationDeals", "deals") or []:
+            adv = _dig(d, "advertiserDetails", "nsid", "id")
+            amount = _dig(d, "allInPricePerStay", "amount") or _dig(d, "pricePerStayObject", "amount")
+            codes = [f"{_dig(i, 'nsid', 'ns')}:{_dig(i, 'nsid', 'id')}" for i in d.get("enrichedPriceAttributesTranslated") or []]
+            deals[(adv, amount)] = codes
+    by_label: dict[str, dict[str, int]] = {}
+    by_code: dict[str, dict[str, int]] = {}
+    label_n: dict[str, int] = {}
+    code_n: dict[str, int] = {}
+    matched = rows = 0
+    for li in soup.find_all(attrs={"data-testid": "deal-list-item"}):
+        rows += 1
+        adv_el = li.find(attrs={"data-testid": re.compile(r"^advertiser-details-\d+$")})
+        price_el = li.find(attrs={"data-testid": "price-per-stay"})
+        if adv_el is None or price_el is None:
+            continue
+        m = re.search(r"[\d.,]+\d", price_el.get_text())
+        if not m:
+            continue
+        key = (int(adv_el["data-testid"].rsplit("-", 1)[1]), int(parse_number(m.group(0))))
+        codes = deals.get(key)
+        if codes is None:
+            continue
+        matched += 1
+        labels = [e.get_text(" ", strip=True) for e in li.find_all(attrs={"data-testid": "rate-attribute"})]
+        for label in labels:
+            label_n[label] = label_n.get(label, 0) + 1
+            for code in codes:
+                by_label.setdefault(label, {})[code] = by_label.setdefault(label, {}).get(code, 0) + 1
+        for code in codes:
+            code_n[code] = code_n.get(code, 0) + 1
+            for label in labels:
+                by_code.setdefault(code, {})[label] = by_code.setdefault(code, {}).get(label, 0) + 1
+    out = [f"## Kod ↔ etiket eşleşmesi: {matched} teklif eşleşti (sayfada {rows} acente satırı, JSON'da {len(deals)} teklif)"]
+    out.append("Etikete göre (hangi kodlar birlikte geliyor):")
+    for label, n in sorted(label_n.items(), key=lambda kv: -kv[1]):
+        pairs = ", ".join(f"{c} x{k}" for c, k in sorted(by_label[label].items(), key=lambda kv: -kv[1])[:6])
+        out.append(f"  '{label}' (n={n}): {pairs}")
+    out.append("Koda göre (hangi etiketlerle birlikte geliyor):")
+    for code, n in sorted(code_n.items(), key=lambda kv: (-kv[1], kv[0])):
+        pairs = ", ".join(f"'{l}' x{k}" for l, k in sorted(by_code.get(code, {}).items(), key=lambda kv: -kv[1])[:5]) or "(etiket yok)"
+        out.append(f"  {code} (n={n}): {pairs}")
+    return out
+
+
+def _dig(node: Any, *path: str) -> Any:
+    for key in path:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key)
+    return node
+
+
 def summarize(stem: Path, max_lines: int = 160, blocks: list[int] | None = None,
-              rows: bool = False, requests: bool = False) -> list[str]:
+              rows: bool = False, requests: bool = False, codes: bool = False) -> list[str]:
     json_path, html_path = stem.with_suffix(".json"), stem.with_suffix(".html")
     lines: list[str] = []
 
+    if codes:
+        raw = json.loads(json_path.read_text(encoding="utf-8"))
+        records = [r if isinstance(r, dict) and "body" in r else {"source": {}, "body": r} for r in raw]
+        soup = BeautifulSoup(html_path.read_text(encoding="utf-8"), "html.parser")
+        return code_label_table(records, soup)
     if rows:
         soup = BeautifulSoup(html_path.read_text(encoding="utf-8"), "html.parser")
         for tag in soup(["script", "style"]):

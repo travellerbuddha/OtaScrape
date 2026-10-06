@@ -76,3 +76,26 @@ def test_inspect_deal_rows_and_requests(tmp_path, capsys):
     assert main(["inspect", str(stem), "--requests"]) == 0
     out = capsys.readouterr().out
     assert '[0] accommodationDealsQuery: {"variables":{"currency":"TRY"}}' in out and "LogUserAction" not in out
+
+
+def test_inspect_codes_correlates_labels(tmp_path, capsys):
+    stem = tmp_path / "c"
+    def deal(adv, amount, codes):
+        return {"advertiserDetails": {"nsid": {"id": adv}}, "allInPricePerStay": {"amount": amount},
+                "enrichedPriceAttributesTranslated": [{"nsid": {"ns": ns, "id": i}} for ns, i in codes]}
+    body = {"data": {"getAccommodationDeals": {"deals": [deal(3008, 93293, [(411, 5), (412, 1)]), deal(395, 82268, [(411, 5), (412, 2)]),
+                                                         deal(700, 50000, [(411, 1), (412, 2)])]}}}
+    stem.with_suffix(".json").write_text(json.dumps([{"source": {}, "body": body}]))
+    def li(adv, total, labels):
+        attrs = "".join(f'<span data-testid="rate-attribute">{l}</span>' for l in labels)
+        return (f'<li data-testid="deal-list-item"><div data-testid="advertiser-details-{adv}"></div>'
+                f'{attrs}<p data-testid="price-per-stay">₺{total} total</p></li>')
+    stem.with_suffix(".html").write_text("<html><body>" + li(3008, "93,293", ["Free cancellation", "All-inclusive"]) +
+                                         li(395, "82,268", ["All-inclusive"]) + li(700, "50,000", ["Breakfast included"]) +
+                                         li(1, "1,000", ["x"]) + "</body></html>")
+    assert main(["inspect", str(stem), "--codes"]) == 0
+    out = capsys.readouterr().out
+    assert "3 teklif eşleşti (sayfada 4 acente satırı, JSON'da 3 teklif)" in out
+    assert "'Free cancellation' (n=1): 411:5 x1, 412:1 x1" in out
+    assert "411:1 (n=1): 'Breakfast included' x1" in out
+    assert "412:2 (n=2): 'All-inclusive' x1, 'Breakfast included' x1" in out
